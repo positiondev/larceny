@@ -7,11 +7,19 @@ import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
+import           Test.Hspec
 import qualified Text.XmlHtml       as X
 
+type Library = Map Text Template
+
 newtype Hole = Hole Text deriving (Eq, Show, Ord)
-newtype Template = Template { runTemplate :: Map Hole Substitution -> Text }
-type Substitution = Template -> Text
+newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
+type Fill = Template -> Library -> Text
+type Substitution = Map Hole Fill
+
+
+
+-- apply?
 
 -- what about overriding whitelisted tags? like <title/>
 
@@ -32,32 +40,43 @@ need m keys rest =
         then rest
         else error $ "Missing keys: " <> (show d)
 
-add :: Map Hole Substitution -> Template -> Template
-add mouter tpl = Template (\minner -> runTemplate tpl (minner `M.union` mouter))
+add :: Substitution -> Template -> Template
+add mouter tpl = Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
+
+text s = \ x y -> s
 
 page :: Template
-page = Template $ \m -> need m [Hole "site-title", Hole "people"] $
-                        T.concat ["<body>"
-                                 , m M.! (Hole "site-title") $ Template (const "")
-                                 , m M.! (Hole "people") $ (add m peopleBody)
+page = Template $ \m l -> need m [Hole "site-title", Hole "people"] $
+                          T.concat ["<body>"
+                                 , (m M.! (Hole "site-title")) (Template (text "")) l
+                                 , (m M.! (Hole "people")) (add m peopleBody) l
                                  , "</body>"
                                  ]
   where peopleBody :: Template
-        peopleBody = Template $ \m -> need m [Hole "name", Hole "site-title"] $
+        peopleBody = Template $ \m l -> need m [Hole "name", Hole "site-title"] $
                                       T.concat ["<p>"
-                                               , m M.! (Hole "name") $ Template (const "")
+                                               , (m M.! (Hole "name")) (Template (text "")) l
                                                , "</p>"
-                                               , m M.! (Hole "site-title") $ Template (const "")
+                                               , (m M.! (Hole "site-title")) (Template (text "")) l
                                                ]
 
 -- to use
-subst :: Map Hole Substitution
-subst = (M.fromList [ (Hole "site-title", const "My site")
+subst :: Substitution
+subst = (M.fromList [ (Hole "site-title", text "My site")
                     , (Hole "people",
-                       \tpl -> T.concat $ map (\n -> runTemplate tpl (M.fromList [(Hole "name", const n)])) ["Daniel", "Matt", "Cassie", "Libby"])])
+                       \tpl l -> T.concat $ map (\n -> runTemplate tpl (M.fromList [(Hole "name", text n)]) l) ["Daniel", "Matt", "Cassie", "Libby"])])
 
+subst' = sub [ ("name", text "My site")
+             , ("person", fill $ sub [("name", text "Daniel")])]
+
+sub :: [(Text, Fill)] -> Substitution
+sub = M.fromList . map (\(x,y) -> (Hole x, y))
+
+fill :: Substitution -> Fill
+fill s = \(Template tpl) -> tpl s
 
 render = runTemplate page subst
+
 
 
 plainNodes = ["body", "p", "h1"]
@@ -66,17 +85,17 @@ parse :: Text -> Template
 parse t = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t)
           in mk nodes
   where mk nodes = let unbound = findUnbound nodes
-          in Template $ \m -> need m (map Hole unbound) (T.concat $ process m unbound nodes)
-        process m unbound [] = []
-        process m unbound (n:ns) =
+          in Template $ \m l -> need m (map Hole unbound) (T.concat $ process m l unbound nodes)
+        process m l unbound [] = []
+        process m l unbound (n:ns) =
           case n of
             X.Element tn _ kids ->
               if tn `elem` plainNodes
-              then ["<" <> tn <> ">"] ++ process m unbound kids ++ ["</" <> tn <> ">"]
-              else [m M.! (Hole tn) $ add m (mk kids)]
+              then ["<" <> tn <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
+              else [(m M.! (Hole tn)) (add m (mk kids)) l]
             X.TextNode t ->  [t]
             X.Comment c -> ["<!--" <> c <> "-->"]
-          ++ process m unbound ns
+          ++ process m l unbound ns
         findUnbound [] = []
         findUnbound (n:ns) =
           case n of
@@ -87,15 +106,46 @@ parse t = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t)
             _ -> []
           ++ findUnbound ns
 
-page' = parse "<body>\
-              \ <site-title/>\
+page' = "<body>\
+         \ <site-title/>\
               \ <people>\
               \   <p><name/></p>\
               \   <site-title/>\
               \ </people>\
               \</body>"
 
-render' = runTemplate page' subst
+page'' = "<body>\
+              \ My site\
+              \   <p>Daniel</p>\
+              \   My site\
+              \   <p>Matt</p>\
+              \   My site\
+              \   <p>Cassie</p>\
+              \   My site\
+              \   <p>Libby</p>\
+              \   My site\
+              \</body>"
+
+render' = runTemplate (parse page') subst
 
 
--- apply?
+
+shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
+shouldRender (template, subst, lib) output =
+  T.replace " " "" (runTemplate (parse template) subst lib) `shouldBe`
+  T.replace " " "" output
+
+spec = hspec $ do
+  describe "parse" $ do
+    it "should parse HTML into a Template" $ do
+      (page', subst, mempty) `shouldRender` page''
+  describe "add" $ do
+    it "should allow overriden tags" $ do
+      ("<name /><person><name /></person>", subst', mempty) `shouldRender` "My siteDaniel"
+  describe "apply" $ do
+    it "should allow templates to be included in other templates" $ do
+      ("<apply name=\"hello\" />", mempty, M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
+    it "should allow templates with unfilled holes to be included in other templates" $ do
+      ("<apply name=\"person\" />", sub [("name", text "Daniel")], M.fromList [("person", parse "<name />")]) `shouldRender` "Daniel"
+    it "should allow templates to be included in other templates" $ do
+      ("<apply name=\"person\">Libby</apply>", mempty, M.fromList [("person", parse "<content />")]) `shouldRender` "Libby"
