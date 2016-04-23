@@ -17,8 +17,6 @@ newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Fill = Template -> Library -> Text
 type Substitution = Map Hole Fill
 
-
-
 -- apply?
 
 -- what about overriding whitelisted tags? like <title/>
@@ -89,13 +87,14 @@ parse t = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t)
         process m l unbound [] = []
         process m l unbound (n:ns) =
           case n of
-            X.Element tn _ kids ->
+            X.Element tn atr kids ->
               if tn `elem` plainNodes
-              then ["<" <> tn <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
+              then ["<" <> tn <> attrsToText atr <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
               else [(m M.! (Hole tn)) (add m (mk kids)) l]
             X.TextNode t ->  [t]
             X.Comment c -> ["<!--" <> c <> "-->"]
           ++ process m l unbound ns
+        attrsToText attrs = T.concat $ map (\(x,y) -> " " <> x <> "=\"" <> y <> "\"") attrs
         findUnbound [] = []
         findUnbound (n:ns) =
           case n of
@@ -128,8 +127,6 @@ page'' = "<body>\
 
 render' = runTemplate (parse page') subst
 
-
-
 shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
 shouldRender (template, subst, lib) output =
   T.replace " " "" (runTemplate (parse template) subst lib) `shouldBe`
@@ -139,6 +136,8 @@ spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
       (page', subst, mempty) `shouldRender` page''
+    it "should allow attributes" $ do
+      ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
   describe "add" $ do
     it "should allow overriden tags" $ do
       ("<name /><person><name /></person>", subst', mempty) `shouldRender` "My siteDaniel"
