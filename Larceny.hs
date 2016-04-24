@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 import           Data.Map           (Map)
 import qualified Data.Map           as M
+import           Data.Maybe         (catMaybes, fromJust, isJust)
 import           Data.Monoid        ((<>))
 import           Data.Set           (Set)
 import qualified Data.Set           as S
@@ -75,35 +76,61 @@ fill s = \(Template tpl) -> tpl s
 
 render = runTemplate page subst
 
+specialNodes = ["apply"]
 
-
-plainNodes = ["body", "p", "h1"]
+plainNodes = ["body", "p", "h1", "img"]
 
 parse :: Text -> Template
 parse t = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t)
           in mk nodes
-  where mk nodes = let unbound = findUnbound nodes
-          in Template $ \m l -> need m (map Hole unbound) (T.concat $ process m l unbound nodes)
-        process m l unbound [] = []
-        process m l unbound (n:ns) =
-          case n of
-            X.Element tn atr kids ->
-              if tn `elem` plainNodes
-              then ["<" <> tn <> attrsToText atr <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
-              else [(m M.! (Hole tn)) (add m (mk kids)) l]
-            X.TextNode t ->  [t]
-            X.Comment c -> ["<!--" <> c <> "-->"]
-          ++ process m l unbound ns
-        attrsToText attrs = T.concat $ map (\(x,y) -> " " <> x <> "=\"" <> y <> "\"") attrs
-        findUnbound [] = []
-        findUnbound (n:ns) =
-          case n of
-            X.Element tn _ kids ->
-              if X.elementTag n `elem` plainNodes
-                then findUnbound (X.elementChildren n)
-                else [X.elementTag n]
-            _ -> []
-          ++ findUnbound ns
+
+mk :: [X.Node] -> Template
+mk nodes = let unbound = findUnbound nodes
+           in Template $ \m l -> need m (map Hole unbound) (T.concat $ process m l unbound nodes)
+
+process :: Substitution -> Library -> [Text] -> [X.Node] -> [Text]
+process m l unbound [] = []
+process m l unbound (n:ns) =
+  case n of
+   X.Element tn atr kids ->
+     if tn `elem` plainNodes
+     then ["<" <> tn <> attrsToText atr <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
+     else
+       if tn == "apply" && isJust (lookup "name" atr)
+       then
+         let tplToApply = l M.! (fromJust (lookup "name" atr))
+             contentSub = sub [("content", (\t l -> runTemplate (mk kids) m l))] in
+         [ runTemplate tplToApply (contentSub `M.union` m) l ]
+       else [(m M.! (Hole tn)) (add m (mk kids)) l]
+   X.TextNode t ->  [t]
+   X.Comment c -> ["<!--" <> c <> "-->"]
+   ++ process m l unbound ns
+  where attrsToText attrs = T.concat $ map attrToText attrs
+        attrToText :: (Text, Text) -> Text
+        attrToText atr =
+          case mUnboundAttr atr of
+            Just hole -> " " <> fst atr <> "=\"" <> ((m M.! (Hole hole)) (mk []) l)  <> "\""
+            Nothing   -> " " <> fst atr <> "=\"" <> snd atr <> "\""
+
+findUnbound :: [X.Node] -> [Text]
+findUnbound [] = []
+findUnbound (n:ns) =
+  case n of
+   X.Element tn atr kids ->
+     if X.elementTag n `elem` plainNodes || X.elementTag n `elem` specialNodes
+     then findUnboundAttrs atr ++ findUnbound (X.elementChildren n)
+     else X.elementTag n : findUnboundAttrs atr
+   _ -> []
+   ++ findUnbound ns
+   where
+
+findUnboundAttrs :: [(Text, Text)] -> [Text]
+findUnboundAttrs atrs = catMaybes $ map mUnboundAttr atrs
+
+mUnboundAttr :: (Text, Text) -> Maybe Text
+mUnboundAttr (_, value) = do
+  endVal <- T.stripPrefix "${" value
+  T.stripSuffix "}" endVal
 
 page' = "<body>\
          \ <site-title/>\
@@ -138,6 +165,7 @@ spec = hspec $ do
       (page', subst, mempty) `shouldRender` page''
     it "should allow attributes" $ do
       ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
+      ("<img src=\"hello\" alt=\"hello\" />", mempty, mempty) `shouldRender` "<img src=\"hello\" alt=\"hello\" />"
   describe "add" $ do
     it "should allow overriden tags" $ do
       ("<name /><person><name /></person>", subst', mempty) `shouldRender` "My siteDaniel"
@@ -148,3 +176,14 @@ spec = hspec $ do
       ("<apply name=\"person\" />", sub [("name", text "Daniel")], M.fromList [("person", parse "<name />")]) `shouldRender` "Daniel"
     it "should allow templates to be included in other templates" $ do
       ("<apply name=\"person\">Libby</apply>", mempty, M.fromList [("person", parse "<content />")]) `shouldRender` "Libby"
+    it "should allow even more compicated templates to be included in other templates" $ do
+      ("<apply name=\"person\"><p>Libby</p></apply>", sub [("food", text "pizza")], M.fromList [("person", parse "<food /><content />")]) `shouldRender` "pizza<p>Libby</p>"
+  describe "attributes" $ do
+    it "should apply substitutions to attributes as well" $ do
+      ("<p id=\"${name}\"><name /></p>", sub [("name", text "McGonagall")], mempty) `shouldRender` "<p id=\"McGonagall\">McGonagall</p>"
+  describe "findUnbound" $ do
+    it "should find stuff matching the pattern ${blah}" $ do
+      findUnbound [X.Element "p" [("blah", "${blah}")] []] `shouldBe` ["blah"]
+  describe "findUnboundAttrs" $ do
+    it "should find stuff matching the pattern ${blah}" $ do
+      findUnboundAttrs [("blah", "${blah}")] `shouldBe` ["blah"]
