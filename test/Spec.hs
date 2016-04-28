@@ -48,7 +48,6 @@ spec = hspec $ do
       (page', subst, mempty) `shouldRender` page''
     it "should allow attributes" $ do
       ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
-      ("<img src=\"hello\" alt=\"hello\" />", mempty, mempty) `shouldRender` "<img src=\"hello\" alt=\"hello\" />"
   describe "add" $ do
     it "should allow overriden tags" $ do
       ("<name /><person><name /></person>", subst', mempty) `shouldRender` "My siteDaniel"
