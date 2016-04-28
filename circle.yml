@@ -1,0 +1,20 @@
+machine:
+  environment:
+    LANG: C.UTF-8
+
+dependencies:
+  cache_directories:
+    - "~/.stack"
+    - "~/larceny/.stack-work"
+  pre:
+    - wget https://github.com/commercialhaskell/stack/releases/download/v1.0.4.3/stack-1.0.4.3-linux-x86_64.tar.gz -O /tmp/stack.tar.gz
+    - tar xvzf /tmp/stack.tar.gz -C /tmp
+    - sudo mv /tmp/stack-1.0.4.3-linux-x86_64/stack /usr/bin/stack
+  override:
+    - stack setup
+    - stack build --pedantic --jobs=4
+    - stack test --no-run-tests --pedantic
+
+test:
+  override:
+    - stack test --pedantic
