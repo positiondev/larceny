@@ -1,20 +1,16 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Data.Map           (Map)
-import qualified Data.Map           as M
-import           Data.Maybe         (catMaybes, fromJust, isJust)
-import           Data.Monoid        ((<>))
-import           Data.Set           (Set)
-import qualified Data.Set           as S
-import           Data.Text          (Text)
-import qualified Data.Text          as T
-import qualified Data.Text.Encoding as T
+import qualified Data.Map     as M
+import           Data.Text    (Text)
+import qualified Data.Text    as T
 import           Larceny
 import           Test.Hspec
-import qualified Text.XmlHtml       as X
+import qualified Text.XmlHtml as X
 
+main :: IO ()
 main = spec
 
+page' :: Text
 page' = "<body>\
          \ <site-title/>\
               \ <people>\
@@ -23,6 +19,7 @@ page' = "<body>\
               \ </people>\
               \</body>"
 
+page'' :: Text
 page'' = "<body>\
               \ My site\
               \   <p>Daniel</p>\
@@ -47,18 +44,19 @@ subst = (M.fromList [ (Hole "site-title", text "My site")
                                             l)
                        ["Daniel", "Matt", "Cassie", "Libby"])])
 
+subst' :: Substitution
 subst' = sub [ ("site-title", text "My site")
              , ("name", text "My site")
              , ("person", fill $ sub [("name", text "Daniel")])
-             , ("people", mapHoles (\n -> sub $ [("name", text n)]) ["Daniel", "Matt", "Cassie", "Libby"]) ]
-
-render' = runTemplate (parse page') subst
+             , ("people", mapSub (\n -> sub $ [("name", text n)])
+                          ["Daniel", "Matt", "Cassie", "Libby"]) ]
 
 shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
-shouldRender (template, subst, lib) output =
-  T.replace " " "" (runTemplate (parse template) subst lib) `shouldBe`
+shouldRender (t, s, l) output =
+  T.replace " " "" (runTemplate (parse t) s l) `shouldBe`
   T.replace " " "" output
 
+spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
