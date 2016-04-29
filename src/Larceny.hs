@@ -14,12 +14,12 @@ import qualified Data.Text.Encoding as T
 import           Test.Hspec
 import qualified Text.XmlHtml       as X
 
-type Library = Map Text Template
-
 newtype Hole = Hole Text deriving (Eq, Show, Ord)
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Fill = Template -> Library -> Text
 type Substitution = Map Hole Fill
+
+type Library = Map Text Template
 
 -- apply?
 
@@ -45,39 +45,37 @@ need m keys rest =
 add :: Substitution -> Template -> Template
 add mouter tpl = Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
-text s = \ x y -> s
+text :: Text -> Fill
+text t = \tpl lib -> t
+
+mapHoles :: (a -> Substitution) -> [a] -> Fill
+mapHoles f xs = \tpl lib ->
+  T.concat $
+  map (\n ->
+        runTemplate tpl (f n) lib) xs
 
 page :: Template
 page = Template $ \m l -> need m [Hole "site-title", Hole "people"] $
                           T.concat ["<body>"
-                                 , (m M.! (Hole "site-title")) (Template (text "")) l
+                                 , (m M.! (Hole "site-title")) (Template (\x y -> "")) l
                                  , (m M.! (Hole "people")) (add m peopleBody) l
                                  , "</body>"
                                  ]
   where peopleBody :: Template
         peopleBody = Template $ \m l -> need m [Hole "name", Hole "site-title"] $
                                       T.concat ["<p>"
-                                               , (m M.! (Hole "name")) (Template (text "")) l
+                                               , (m M.! (Hole "name")) (Template (\x y -> "")) l
                                                , "</p>"
-                                               , (m M.! (Hole "site-title")) (Template (text "")) l
+                                               , (m M.! (Hole "site-title")) (Template (\x y -> "")) l
                                                ]
 
--- to use
-subst :: Substitution
-subst = (M.fromList [ (Hole "site-title", text "My site")
-                    , (Hole "people",
-                       \tpl l -> T.concat $ map (\n -> runTemplate tpl (M.fromList [(Hole "name", text n)]) l) ["Daniel", "Matt", "Cassie", "Libby"])])
 
-subst' = sub [ ("name", text "My site")
-             , ("person", fill $ sub [("name", text "Daniel")])]
 
 sub :: [(Text, Fill)] -> Substitution
 sub = M.fromList . map (\(x,y) -> (Hole x, y))
 
 fill :: Substitution -> Fill
 fill s = \(Template tpl) -> tpl s
-
-render = runTemplate page subst
 
 specialNodes = ["apply"]
 
