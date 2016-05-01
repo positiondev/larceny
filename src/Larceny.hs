@@ -11,6 +11,7 @@ import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
+import           Debug.Trace        (trace)
 import qualified Text.XmlHtml       as X
 
 newtype Hole = Hole Text deriving (Eq, Show, Ord)
@@ -18,6 +19,8 @@ type Fill = Template -> Library -> Text
 type Substitution = Map Hole Fill
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Library = Map Text Template
+
+
 
 -- what about overriding whitelisted tags? like <title/>
 
@@ -51,23 +54,6 @@ mapSub f xs = \tpl lib ->
   map (\n ->
         runTemplate tpl (f n) lib) xs
 
-page :: Template
-page = Template $ \m l -> need m [Hole "site-title", Hole "people"] $
-                          T.concat ["<body>"
-                                 , (m M.! (Hole "site-title")) (Template $ text "") l
-                                 , (m M.! (Hole "people")) (add m peopleBody) l
-                                 , "</body>"
-                                 ]
-  where peopleBody :: Template
-        peopleBody = Template $ \m l -> need m [Hole "name", Hole "site-title"] $
-                                      T.concat ["<p>"
-                                               , (m M.! (Hole "name")) (Template $ text "") l
-                                               , "</p>"
-                                               , (m M.! (Hole "site-title")) (Template $ text "") l
-                                               ]
-
-
-
 sub :: [(Text, Fill)] -> Substitution
 sub = M.fromList . map (\(x,y) -> (Hole x, y))
 
@@ -91,28 +77,71 @@ mk nodes = let unbound = findUnbound nodes
 process :: Substitution -> Library -> [Text] -> [X.Node] -> [Text]
 process _ _ _ [] = []
 process m l unbound (n:ns) =
-  case n of
-   X.Element tn atr kids ->
-     if tn `elem` plainNodes
-     then ["<" <> tn <> attrsToText atr <> ">"] ++ process m l unbound kids ++ ["</" <> tn <> ">"]
-     else
-       if tn == "apply" && isJust (lookup "name" atr)
-       then
-         let tplToApply = l M.! (fromJust (lookup "name" atr))
-             contentSub = sub [("content", (\_ l' -> runTemplate (mk kids) m l'))] in
-         [ runTemplate tplToApply (contentSub `M.union` m) l ]
-       else [(m M.! (Hole tn)) (add m (mk kids)) l]
-   X.TextNode t ->  [t]
-   X.Comment c -> ["<!--" <> c <> "-->"]
+  case nodeType n of
+   Plain -> processPlain m l unbound n
+   Fancy -> trace "Fancy" $ processFancy m l unbound n
+   Apply -> processApply m l unbound n
+   TextNode -> (\(X.TextNode t) -> [(t)]) n
+   Comment -> (\(X.Comment c) -> ["<!--" <> c <> "-->"]) n
    ++ process m l unbound ns
-  where attrsToText attrs = T.concat $ map attrToText attrs
-        attrToText :: (Text, Text) -> Text
-        attrToText atr =
-          case mUnboundAttr atr of
-            Just hole -> " " <> fst atr <> "=\"" <> ((m M.! (Hole hole)) (mk []) l)  <> "\""
-            Nothing   -> " " <> fst atr <> "=\"" <> snd atr <> "\""
 
-findUnbound :: [X.Node] -> [Text]
+data NodeType = Apply | Plain | Fancy | TextNode | Comment
+
+nodeType :: X.Node -> NodeType
+nodeType (X.TextNode _) = TextNode
+nodeType (X.Comment _) = Comment
+nodeType (X.Element "apply" _ _) = Apply
+nodeType (X.Element tn atr kids) =
+  if tn `elem` plainNodes
+  then Plain
+  else Fancy
+
+-- Add the open tag, process the children, then close the tag.
+processPlain :: Substitution -> Library -> [Text] -> X.Node -> [Text]
+processPlain m l unbound (X.Element tn atr kids) =
+  ["<" <> tn <> attrsToText m l atr <> ">"]
+  ++ process m l unbound kids
+  ++ ["</" <> tn <> ">"]
+
+-- Look up the Fill for the hole.  Apply the Fill to a Template made
+-- from the child nodes, adding in the outer substituion, and the
+-- library.
+processFancy :: Substitution -> Library -> [Text] -> X.Node -> [Text]
+processFancy m l unbound (X.Element tn atr kids) =
+  -- add attrs as substitutions
+  let attrSubs = sub $ map attrSub atr
+      attrSub (key, val) = (key, text val)
+      lookupFill =
+        case M.lookup (Hole tn) m of
+          Just x -> x
+          Nothing -> text "whoops" in
+  trace ("Tag: " ++ show tn) $ [(m M.! (Hole tn)) (add (attrSubs `M.union` m) (mk kids)) l]
+
+-- Look up the template that's supposed to be applied in the library,
+-- create a substitution for the content hole using the child elements
+-- of the apply tag, then run the template with that substitution
+-- combined with outer substitution and the library. Phew.
+processApply :: Substitution -> Library -> [Text] -> X.Node -> [Text]
+processApply m l unbound (X.Element tn atr kids) =
+  let tplName =
+        case lookup "name" atr of
+          Just n -> n
+          Nothing -> error "Template to apply not found"
+      tplToApply = l M.! tplName
+      contentSub = sub [("content",
+                         (\_ l' -> runTemplate (mk kids) m l'))] in
+  [ runTemplate tplToApply (contentSub `M.union` m) l ]
+
+attrsToText :: Substitution -> Library -> [(Text, Text)] -> Text
+attrsToText m l attrs= T.concat $ map (attrToText m l) attrs
+  where
+    attrToText m l atr =
+      case mUnboundAttr atr of
+       Just hole -> " " <> fst atr <> "=\"" <>
+                    ((m M.! (Hole hole)) (mk []) l)  <> "\""
+       Nothing   -> " " <> fst atr <> "=\"" <> snd atr <> "\""
+
+--findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
 findUnbound (n:ns) =
   case n of
@@ -124,10 +153,10 @@ findUnbound (n:ns) =
    ++ findUnbound ns
    where
 
-findUnboundAttrs :: [(Text, Text)] -> [Text]
+--findUnboundAttrs :: [(Text, Text)] -> [Text]
 findUnboundAttrs atrs = catMaybes $ map mUnboundAttr atrs
 
-mUnboundAttr :: (Text, Text) -> Maybe Text
+--mUnboundAttr :: (Text, Text) -> Maybe Text
 mUnboundAttr (_, value) = do
   endVal <- T.stripPrefix "${" value
   T.stripSuffix "}" endVal
