@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.Map     as M
+import           Data.Monoid  ((<>))
 import           Data.Text    (Text)
 import qualified Data.Text    as T
 import           Larceny
@@ -45,20 +46,22 @@ subst = (M.fromList [ (Hole "site-title", text "My site")
                                             l)
                        ["Daniel", "Matt", "Cassie", "Libby"])])--}
 
+              {--
 page :: Template
 page = Template $ \m l -> need m [Hole "site-title", Hole "people"] $
                           T.concat ["<body>"
-                                 , (m M.! (Hole "site-title")) (Template $ text "") l
-                                 , (m M.! (Hole "people")) (add m peopleBody) l
+                                 , (fillIn "site-title" m) (mk []) l
+                                 , (fillIn "people" m) (add m peopleBody) l
                                  , "</body>"
                                  ]
   where peopleBody :: Template
         peopleBody = Template $ \m l -> need m [Hole "name", Hole "site-title"] $
                                       T.concat ["<p>"
-                                               , (m M.! (Hole "name")) (Template $ text "") l
+                                               , (fillIn "name" m) (mk []) l
                                                , "</p>"
-                                               , (m M.! (Hole "site-title")) (Template $ text "") l
+                                               , (fillIn "site-title" m) (mk []) l
                                                ]
+--}
 
 subst :: Substitution
 subst = sub [ ("site-title", text "My site")
@@ -90,9 +93,9 @@ spec = hspec $ do
        mempty,
        M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
-      ("<apply name=\"person\" />",
-       sub [("name", text "Daniel")],
-       M.fromList [("person", parse "<name />")]) `shouldRender` "Daniel"
+      ("<apply name=\"skater\" />",
+       sub [("alias", text "Fifi Nomenom")],
+       M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply name=\"person\">Libby</apply>",
        mempty,
@@ -113,11 +116,21 @@ spec = hspec $ do
        sub [("name", text "McGonagall")],
        mempty) `shouldRender` "<p id=\"McGonagall\">McGonagall</p>"
 
-  -- WAT
+  -- WAT? I'm really surpised this works
     it "should allow you to use attributes as substitutions" $ do
-      ("<person alias=\"Bonnie Thunders\"><alias /></person>",
-       sub [("person", fill mempty)],
+      ("<skater alias=\"Bonnie Thunders\"><alias /></skater>",
+       sub [("skater", fill mempty)],
        mempty) `shouldRender` "Bonnie Thunders"
+
+  describe "funky templates" $ do
+    it "should allow you to write functions for fills" $ do
+      ("<apply name=\"description\" length=\"10\" />",
+       mempty,
+       M.fromList [("description", funkyTpl "length"
+                              (\n -> T.take ((read $T.unpack n) :: Int)
+                                      "A really long description"
+                                      <> "..."))])
+        `shouldRender` "A really l..."
 
   describe "findUnbound" $ do
     it "should find stuff matching the pattern ${blah}" $ do

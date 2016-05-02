@@ -4,14 +4,13 @@ module Larceny where
 
 import           Data.Map           (Map)
 import qualified Data.Map           as M
-import           Data.Maybe         (catMaybes, fromJust, isJust)
+import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Monoid        ((<>))
 --import           Data.Set           (Set)
 import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
-import           Debug.Trace        (trace)
 import qualified Text.XmlHtml       as X
 
 newtype Hole = Hole Text deriving (Eq, Show, Ord)
@@ -19,8 +18,6 @@ type Fill = Template -> Library -> Text
 type Substitution = Map Hole Fill
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Library = Map Text Template
-
-
 
 -- what about overriding whitelisted tags? like <title/>
 
@@ -39,13 +36,13 @@ need m keys rest =
       d = S.difference sk sm
   in if S.null d
         then rest
-        else error $ "Missing keys: " <> (show d)
+        else error $ "Missing keys: " <> show d
 
 add :: Substitution -> Template -> Template
 add mouter tpl = Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
 -- works to create both Templates and Fills?
-text :: Text -> a -> Library -> Text
+text :: Text -> Fill
 text t = \_ _ -> t
 
 mapSub :: (a -> Substitution) -> [a] -> Fill
@@ -53,6 +50,12 @@ mapSub f xs = \tpl lib ->
   T.concat $
   map (\n ->
         runTemplate tpl (f n) lib) xs
+
+funkyTpl :: Text -> (Text -> Text) -> Template
+funkyTpl argName f = Template
+  (\m l ->
+    let argText = (m M.! Hole argName) (mk []) l in
+    need m [Hole argName] $  f argText)
 
 sub :: [(Text, Fill)] -> Substitution
 sub = M.fromList . map (\(x,y) -> (Hole x, y))
@@ -77,71 +80,62 @@ mk nodes = let unbound = findUnbound nodes
 process :: Substitution -> Library -> [Text] -> [X.Node] -> [Text]
 process _ _ _ [] = []
 process m l unbound (n:ns) =
-  case nodeType n of
-   Plain -> processPlain m l unbound n
-   Fancy -> trace "Fancy" $ processFancy m l unbound n
-   Apply -> processApply m l unbound n
-   TextNode -> (\(X.TextNode t) -> [(t)]) n
-   Comment -> (\(X.Comment c) -> ["<!--" <> c <> "-->"]) n
-   ++ process m l unbound ns
-
-data NodeType = Apply | Plain | Fancy | TextNode | Comment
-
-nodeType :: X.Node -> NodeType
-nodeType (X.TextNode _) = TextNode
-nodeType (X.Comment _) = Comment
-nodeType (X.Element "apply" _ _) = Apply
-nodeType (X.Element tn atr kids) =
-  if tn `elem` plainNodes
-  then Plain
-  else Fancy
+  case n of
+    X.Element "apply" atr kids -> processApply m l atr kids
+    X.Element tn atr kids       | tn `elem` plainNodes ->
+                                  processPlain m l unbound tn atr kids
+    X.Element tn atr kids      -> processFancy m l tn atr kids
+    X.TextNode t -> [t]
+    X.Comment c -> ["<!--" <> c <> "-->"]
+  ++ process m l unbound ns
 
 -- Add the open tag, process the children, then close the tag.
-processPlain :: Substitution -> Library -> [Text] -> X.Node -> [Text]
-processPlain m l unbound (X.Element tn atr kids) =
+processPlain :: Substitution -> Library -> [Text] ->
+                Text -> [(Text, Text)] -> [X.Node] -> [Text]
+processPlain m l unbound tn atr kids =
   ["<" <> tn <> attrsToText m l atr <> ">"]
   ++ process m l unbound kids
   ++ ["</" <> tn <> ">"]
 
 -- Look up the Fill for the hole.  Apply the Fill to a Template made
--- from the child nodes, adding in the outer substituion, and the
+-- from the child nodes (adding in the outer substituion) and the
 -- library.
-processFancy :: Substitution -> Library -> [Text] -> X.Node -> [Text]
-processFancy m l unbound (X.Element tn atr kids) =
+processFancy :: Substitution -> Library ->
+                Text -> [(Text, Text)] -> [X.Node] -> [Text]
+processFancy m l tn atr kids =
   -- add attrs as substitutions
-  let attrSubs = sub $ map attrSub atr
-      attrSub (key, val) = (key, text val)
-      lookupFill =
-        case M.lookup (Hole tn) m of
-          Just x -> x
-          Nothing -> text "whoops" in
-  trace ("Tag: " ++ show tn) $ [(m M.! (Hole tn)) (add (attrSubs `M.union` m) (mk kids)) l]
+  let attrSubs = sub $ map (\(k,v) -> (k, text v)) atr in
+  [ fillIn tn m (add (attrSubs `M.union` m) (mk kids)) l]
+
+fillIn :: Text -> Substitution -> Fill
+fillIn tn m = m M.! Hole tn
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
-processApply :: Substitution -> Library -> [Text] -> X.Node -> [Text]
-processApply m l unbound (X.Element tn atr kids) =
-  let tplName =
-        case lookup "name" atr of
-          Just n -> n
-          Nothing -> error "Template to apply not found"
+processApply :: Substitution -> Library ->
+                [(Text, Text)] -> [X.Node] -> [Text]
+processApply m l atr kids =
+  let tplName = fromMaybe
+                (error "Template to apply not found")
+                (lookup "name" atr)
       tplToApply = l M.! tplName
+      attrSubs = sub $ map (\(k,v) -> (k, text v)) atr
       contentSub = sub [("content",
-                         (\_ l' -> runTemplate (mk kids) m l'))] in
-  [ runTemplate tplToApply (contentSub `M.union` m) l ]
+                         \_ l' -> runTemplate (mk kids) m l')] in
+  [ runTemplate tplToApply (contentSub `M.union` (attrSubs `M.union` m)) l ]
 
 attrsToText :: Substitution -> Library -> [(Text, Text)] -> Text
-attrsToText m l attrs= T.concat $ map (attrToText m l) attrs
+attrsToText m l attrs= T.concat $ map attrToText attrs
   where
-    attrToText m l atr =
+    attrToText atr =
       case mUnboundAttr atr of
        Just hole -> " " <> fst atr <> "=\"" <>
-                    ((m M.! (Hole hole)) (mk []) l)  <> "\""
+                    fillIn hole m (mk []) l  <> "\""
        Nothing   -> " " <> fst atr <> "=\"" <> snd atr <> "\""
 
---findUnbound :: [X.Node] -> [Text]
+findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
 findUnbound (n:ns) =
   case n of
@@ -153,10 +147,10 @@ findUnbound (n:ns) =
    ++ findUnbound ns
    where
 
---findUnboundAttrs :: [(Text, Text)] -> [Text]
-findUnboundAttrs atrs = catMaybes $ map mUnboundAttr atrs
+findUnboundAttrs :: [(Text, Text)] -> [Text]
+findUnboundAttrs = mapMaybe mUnboundAttr
 
---mUnboundAttr :: (Text, Text) -> Maybe Text
+mUnboundAttr :: (Text, Text) -> Maybe Text
 mUnboundAttr (_, value) = do
   endVal <- T.stripPrefix "${" value
   T.stripSuffix "}" endVal
