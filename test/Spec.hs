@@ -116,7 +116,6 @@ spec = hspec $ do
        sub [("name", text "McGonagall")],
        mempty) `shouldRender` "<p id=\"McGonagall\">McGonagall</p>"
 
-  -- WAT? I'm really surpised this works
     it "should allow you to use attributes as substitutions" $ do
       ("<skater alias=\"Bonnie Thunders\"><alias /></skater>",
        sub [("skater", fill mempty)],

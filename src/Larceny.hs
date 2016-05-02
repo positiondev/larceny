@@ -6,7 +6,6 @@ import           Data.Map           (Map)
 import qualified Data.Map           as M
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Monoid        ((<>))
---import           Data.Set           (Set)
 import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -18,16 +17,6 @@ type Fill = Template -> Library -> Text
 type Substitution = Map Hole Fill
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Library = Map Text Template
-
--- what about overriding whitelisted tags? like <title/>
-
--- page' = parse "<body><head><title>Great site!</title></head>\
---               \ <site-title/>\
---               \ <people>\
---               \   <p><name/></p>\
---               \   <site-title/>\
---               \ </people>\
---               \</body>"
 
 need :: Map Hole a -> [Hole] -> c -> c
 need m keys rest =
@@ -82,11 +71,11 @@ process _ _ _ [] = []
 process m l unbound (n:ns) =
   case n of
     X.Element "apply" atr kids -> processApply m l atr kids
-    X.Element tn atr kids       | tn `elem` plainNodes ->
+    X.Element tn atr kids | tn `elem` plainNodes ->
                                   processPlain m l unbound tn atr kids
     X.Element tn atr kids      -> processFancy m l tn atr kids
-    X.TextNode t -> [t]
-    X.Comment c -> ["<!--" <> c <> "-->"]
+    X.TextNode t               -> [t]
+    X.Comment c                -> ["<!--" <> c <> "-->"]
   ++ process m l unbound ns
 
 -- Add the open tag, process the children, then close the tag.
@@ -111,9 +100,10 @@ fillIn :: Text -> Substitution -> Fill
 fillIn tn m = m M.! Hole tn
 
 -- Look up the template that's supposed to be applied in the library,
--- create a substitution for the content hole using the child elements
--- of the apply tag, then run the template with that substitution
--- combined with outer substitution and the library. Phew.
+-- add all the attributes as text substitutions, create a substitution
+-- for the content hole using the child elements of the apply tag,
+-- then run the template with that substitution combined with outer
+-- substitution and the library. Phew.
 processApply :: Substitution -> Library ->
                 [(Text, Text)] -> [X.Node] -> [Text]
 processApply m l atr kids =
