@@ -81,7 +81,7 @@ spec = hspec $ do
     it "should parse HTML into a Template" $ do
       (page', subst, mempty) `shouldRender` page''
     it "should allow attributes" $ do
-      ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
+      ("<p id=\"hello\">hello</p>", sempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
 
   describe "add" $ do
     it "should allow overriden tags" $ do
@@ -90,7 +90,7 @@ spec = hspec $ do
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply name=\"hello\" />",
-       mempty,
+       sempty,
        M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
       ("<apply name=\"skater\" />",
@@ -98,7 +98,7 @@ spec = hspec $ do
        M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply name=\"person\">Libby</apply>",
-       mempty,
+       sempty,
        M.fromList [("person", parse "<content />")]) `shouldRender` "Libby"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply name=\"person\"><p>Libby</p></apply>",
@@ -118,13 +118,23 @@ spec = hspec $ do
 
     it "should allow you to use attributes as substitutions" $ do
       ("<skater alias=\"Bonnie Thunders\"><alias /></skater>",
-       sub [("skater", fill mempty)],
+       sub [("skater", fill sempty)],
        mempty) `shouldRender` "Bonnie Thunders"
 
-  describe "funky templates" $ do
+  describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
+      ("<description length=\"10\" />",
+       sub [("description", funkyFill "length"
+                              (\n -> T.take ((read $T.unpack n) :: Int)
+                                      "A really long description"
+                                      <> "..."))],
+       mempty)
+        `shouldRender` "A really l..."
+
+  describe "funky templates" $ do
+    it "should allow you to write functions for templates" $ do
       ("<apply name=\"description\" length=\"10\" />",
-       mempty,
+       sempty,
        M.fromList [("description", funkyTpl "length"
                               (\n -> T.take ((read $T.unpack n) :: Int)
                                       "A really long description"
