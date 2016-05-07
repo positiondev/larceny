@@ -10,12 +10,11 @@ import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
-import           Debug.Trace        (trace)
 import qualified Text.XmlHtml       as X
 
 newtype Hole = Hole Text deriving (Eq, Show, Ord)
 type Fill = Template -> Library -> Text
-newtype Substitution = Substitution { findFill :: Map Hole (Substitution -> Fill) }
+type Substitution = Map Hole Fill
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Library = Map Text Template
 
@@ -28,41 +27,30 @@ need m keys rest =
         then rest
         else error $ "Missing keys: " <> show d
 
-union :: Substitution -> Substitution -> Substitution
-union (Substitution s1) (Substitution s2) = Substitution (s1 `M.union` s2)
-
-sempty :: Substitution
-sempty = Substitution mempty
-
 add :: Substitution -> Template -> Template
-add mouter tpl = Template (\minner l -> runTemplate tpl (minner `union` mouter) l)
+add mouter tpl = Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
-text :: Text -> Substitution -> Fill
-text t = \_ _ _ -> t
+-- works to create both Templates and Fills?
+text :: Text -> Fill
+text t = \_ _ -> t
 
-mapSub :: (a -> Substitution) -> [a] -> (Substitution -> Fill)
-mapSub f xs = \_ tpl lib ->
+mapSub :: (a -> Substitution) -> [a] -> Fill
+mapSub f xs = \tpl lib ->
   T.concat $
   map (\n ->
         runTemplate tpl (f n) lib) xs
 
-funkyFill :: Text -> (Text -> Text) -> (Substitution -> Fill)
-funkyFill argName f = trace (show $ argName) $
-  (\m _ l ->
-    let argText = fillIn argName m m (mk []) l in
-    f argText)
-
 funkyTpl :: Text -> (Text -> Text) -> Template
 funkyTpl argName f = Template
-  (\m@(Substitution s) l ->
-    let argText = fillIn argName m m (mk []) l in
-    need s [Hole argName] $  f argText)
+  (\m l ->
+    let argText = (m M.! Hole argName) (mk []) l in
+    need m [Hole argName] $  f argText)
 
-sub :: [(Text, Substitution -> Fill)] -> Substitution
-sub xs = Substitution $ M.fromList (map (\(x,y) -> (Hole x, y)) xs)
+sub :: [(Text, Fill)] -> Substitution
+sub = M.fromList . map (\(x,y) -> (Hole x, y))
 
-fill :: Substitution -> (Substitution -> Fill)
-fill s = \s' (Template tpl) -> tpl (s `union` s')
+fill :: Substitution -> Fill
+fill s = \(Template tpl) -> tpl s
 
 specialNodes :: [Text]
 specialNodes = ["apply"]
@@ -76,9 +64,7 @@ parse t = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t)
 
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
-           in Template $ \m@(Substitution s) l ->
-                          need s (map Hole unbound)
-                                 (T.concat $ process m l unbound nodes)
+           in Template $ \m l -> need m (map Hole unbound) (T.concat $ process m l unbound nodes)
 
 process :: Substitution -> Library -> [Text] -> [X.Node] -> [Text]
 process _ _ _ [] = []
@@ -108,10 +94,10 @@ processFancy :: Substitution -> Library ->
 processFancy m l tn atr kids =
   -- add attrs as substitutions
   let attrSubs = sub $ map (\(k,v) -> (k, text v)) atr in
-  [ fillIn tn (attrSubs `union` m) (attrSubs `union` m) (add (attrSubs `union` m) (mk kids)) l]
+  [ fillIn tn m (add (attrSubs `M.union` m) (mk kids)) l]
 
-fillIn :: Text -> Substitution -> Substitution -> Fill
-fillIn tn (Substitution m) = m M.! Hole tn
+fillIn :: Text -> Substitution -> Fill
+fillIn tn m = m M.! Hole tn
 
 -- Look up the template that's supposed to be applied in the library,
 -- add all the attributes as text substitutions, create a substitution
@@ -127,8 +113,8 @@ processApply m l atr kids =
       tplToApply = l M.! tplName
       attrSubs = sub $ map (\(k,v) -> (k, text v)) atr
       contentSub = sub [("content",
-                         \_ _ l' -> runTemplate (mk kids) m l')] in
-  [ runTemplate tplToApply (contentSub `union` (attrSubs `union` m)) l ]
+                         \_ l' -> runTemplate (mk kids) m l')] in
+  [ runTemplate tplToApply (contentSub `M.union` (attrSubs `M.union` m)) l ]
 
 attrsToText :: Substitution -> Library -> [(Text, Text)] -> Text
 attrsToText m l attrs= T.concat $ map attrToText attrs
@@ -136,7 +122,7 @@ attrsToText m l attrs= T.concat $ map attrToText attrs
     attrToText atr =
       case mUnboundAttr atr of
        Just hole -> " " <> fst atr <> "=\"" <>
-                    fillIn hole m m (mk []) l  <> "\""
+                    fillIn hole m (mk []) l  <> "\""
        Nothing   -> " " <> fst atr <> "=\"" <> snd atr <> "\""
 
 findUnbound :: [X.Node] -> [Text]
