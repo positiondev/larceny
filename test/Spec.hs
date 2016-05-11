@@ -1,3 +1,4 @@
+
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.Map     as M
@@ -71,8 +72,8 @@ subst = sub [ ("site-title", text "My site")
                           ["Daniel", "Matt", "Cassie", "Libby"]) ]
 
 shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
-shouldRender (t, s, l) output =
-  T.replace " " "" (runTemplate (parse t) s l) `shouldBe`
+shouldRender (t', s, l) output =
+  T.replace " " "" (runTemplate (parse t') s l) `shouldBe`
   T.replace " " "" output
 
 spec :: IO ()
@@ -116,25 +117,32 @@ spec = hspec $ do
        sub [("name", text "McGonagall")],
        mempty) `shouldRender` "<p id=\"McGonagall\">McGonagall</p>"
 
-    it "should allow you to use attributes as substitutions" $ do
-      ("<skater alias=\"Bonnie Thunders\"><alias /></skater>",
-       sub [("skater", fill mempty)],
-       mempty) `shouldRender` "Bonnie Thunders"
-
-  describe "funky templates" $ do
+  describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
-      ("<apply name=\"description\" length=\"10\" />",
-       mempty,
-       M.fromList [("description", funkyTpl "length"
-                              (\n -> T.take ((read $T.unpack n) :: Int)
-                                      "A really long description"
-                                      <> "..."))])
-        `shouldRender` "A really l..."
+      ("<desc length=\"10\" />",
+       sub [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length") :: Int)
+                               "A really long description"
+                               <> "...")],
+        mempty) `shouldRender` "A really l..."
+
+    it "should allow you to *easily* write functions for fills" $ do
+      ("<desc length=\"10\" />",
+       sub [("desc", funkyFill (i"length" (\n -> T.take n
+                                             "A really long description"
+                                             <> "...")))],
+        mempty) `shouldRender` "A really l..."
+
+    it "should allow you use multiple args" $ do
+      ("<desc length=\"10\" text=\"A really long description\" />",
+       sub [("desc", funkyFill ((i"length" %
+                                 t"text")
+                                (\n d -> T.take n d <> "...")))],
+        mempty) `shouldRender` "A really l..."
 
   describe "findUnbound" $ do
     it "should find stuff matching the pattern ${blah}" $ do
-      findUnbound [X.Element "p" [("blah", "${blah}")] []] `shouldBe` ["blah"]
+      findUnbound [X.Element "p" [("foo", "${blah}")] []] `shouldBe` ["blah"]
 
   describe "findUnboundAttrs" $ do
     it "should find stuff matching the pattern ${blah}" $ do
-      findUnboundAttrs [("blah", "${blah}")] `shouldBe` ["blah"]
+      findUnboundAttrs [("foo", "${blah}")] `shouldBe` ["blah"]
