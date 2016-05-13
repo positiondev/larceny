@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import qualified Data.Map     as M
+import           Data.Monoid  ((<>))
 import           Data.Text    (Text)
 import qualified Data.Text    as T
 import           Larceny
@@ -31,36 +32,6 @@ page'' = "<body>\
               \   <p>Libby</p>\
               \   My site\
               \</body>"
-
-              {--
--- to use
-subst :: Substitution
-subst = (M.fromList [ (Hole "site-title", text "My site")
-                    , (Hole "people",
-                       \tpl l ->
-                       T.concat $ map (\n ->
-                                       runTemplate
-                                            tpl (M.fromList
-                                                 [(Hole "name", text n)])
-                                            l)
-                       ["Daniel", "Matt", "Cassie", "Libby"])])--}
-
-              {--
-page :: Template
-page = Template $ \m l -> need m [Hole "site-title", Hole "people"] $
-                          T.concat ["<body>"
-                                 , (fillIn "site-title" m) (mk []) l
-                                 , (fillIn "people" m) (add m peopleBody) l
-                                 , "</body>"
-                                 ]
-  where peopleBody :: Template
-        peopleBody = Template $ \m l -> need m [Hole "name", Hole "site-title"] $
-                                      T.concat ["<p>"
-                                               , (fillIn "name" m) (mk []) l
-                                               , "</p>"
-                                               , (fillIn "site-title" m) (mk []) l
-                                               ]
---}
 
 subst :: Substitution
 subst = sub [ ("site-title", text "My site")
@@ -108,6 +79,28 @@ spec = hspec $ do
   describe "mapHoles" $ do
     it "should map a substitution over a list" $ do
       (page', subst, mempty) `shouldRender` page''
+
+  describe "funky fills" $ do
+    it "should allow you to write functions for fills" $ do
+      ("<desc length=\"10\" />",
+       sub [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length") :: Int)
+                               "A really long description"
+                               <> "...")],
+        mempty) `shouldRender` "A really l..."
+
+    it "should allow you to *easily* write functions for fills" $ do
+      ("<desc length=\"10\" />",
+       sub [("desc", funFill (i"length" (\n -> T.take n
+                                               "A really long description"
+                                               <> "...")))],
+        mempty) `shouldRender` "A really l..."
+
+    it "should allow you use multiple args" $ do
+      ("<desc length=\"10\" text=\"A really long description\" />",
+       sub [("desc", funFill ((i"length" %
+                               t"text")
+                               (\n d -> T.take n d <> "...")))],
+        mempty) `shouldRender` "A really l..."
 
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
