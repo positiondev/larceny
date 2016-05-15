@@ -11,34 +11,50 @@ import qualified Text.XmlHtml as X
 main :: IO ()
 main = spec
 
-page' :: Text
-page' = "<body>\
-\          <site-title/>\
-\          <people>\
-\            <p><name/></p>\
-\            <site-title/>\
-\          </people>\
+page :: Text
+page = "<body>                    \
+\          <h1>                    \
+\            <name/>               \
+\          </h1>                   \
+\          <ul>                    \
+\            <skaters>             \
+\              <li>                \
+\                <h2><name/></h2>  \
+\                <p><position/></p>\
+\              </li>               \
+\            </skaters>            \
+\          </ul>                   \
 \        </body>"
 
-page'' :: Text
-page'' = "<body>\
-              \ My site\
-              \   <p>Daniel</p>\
-              \   My site\
-              \   <p>Matt</p>\
-              \   My site\
-              \   <p>Cassie</p>\
-              \   My site\
-              \   <p>Libby</p>\
-              \   My site\
-              \</body>"
+page' :: Text
+page' = "<body>                         \
+\          <h1>Gotham Girls roster</h1> \
+\          <ul>                         \
+\            <li>                       \
+\              <h2>Bonnie Thunders</h2> \
+\              <p>jammer</p>            \
+\            </li>                      \
+\            <li>                       \
+\              <h2>Donna Matrix</h2>    \
+\              <p>blocker</p>           \
+\            </li>                      \
+\            <li>                       \
+\              <h2>V-Diva</h2>          \
+\              <p>jammer</p>            \
+\            </li>                      \
+\          </ul>                        \
+\        </body>"
 
 subst :: Substitution
-subst = sub [ ("site-title", text "My site")
-             , ("name", text "My site")
-             , ("person", fill $ sub [("name", text "Daniel")])
-             , ("people", mapSub (\n -> sub $ [("name", text n)])
-                          ["Daniel", "Matt", "Cassie", "Libby"]) ]
+subst = sub [ ("site-title", text "Gotham Girls roster")
+            , ("name", text "Gotham Girls roster")
+            , ("skater", fill $ sub [("name", text "Amy Roundhouse")])
+            , ("skaters", mapSub
+                          (\(n, p) -> sub [("name", text n)
+                                          ,("position", text p)])
+                          [ ("Bonnie Thunders", "jammer")
+                          , ("Donna Matrix", "blocker")
+                          , ("V-Diva", "jammer") ] )]
 
 shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
 shouldRender (t', s, l) output =
@@ -49,13 +65,13 @@ spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
-      (page', subst, mempty) `shouldRender` page''
+      (page, subst, mempty) `shouldRender` page'
     it "should allow attributes" $ do
       ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
 
   describe "add" $ do
     it "should allow overriden tags" $ do
-      ("<name /><person><name /></person>", subst, mempty) `shouldRender` "My siteDaniel"
+      ("<name /><skater><name /></skater>", subst, mempty) `shouldRender` "Gotham Girls roster Amy Roundhouse"
 
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
@@ -67,18 +83,20 @@ spec = hspec $ do
        sub [("alias", text "Fifi Nomenom")],
        M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
-      ("<apply name=\"person\">Libby</apply>",
+      ("<apply name=\"skater\">V-Diva</apply>",
        mempty,
-       M.fromList [("person", parse "<content />")]) `shouldRender` "Libby"
+       M.fromList [("skater", parse "<content />")]) `shouldRender` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
-      ("<apply name=\"person\"><p>Libby</p></apply>",
-       sub [("food", text "pizza")],
-       M.fromList [("person", parse "<food /><content />")])
-        `shouldRender` "pizza<p>Libby</p>"
+      ("<apply name=\"_base\"><p>The Smacktivist</p></apply>",
+       sub [("siteTitle", text "Ohio Roller Girls")],
+       M.fromList [("_base", parse "<h1><siteTitle /></h1>\
+                                   \<content />")])
+        `shouldRender` "<h1>Ohio Roller Girls</h1>\
+                       \<p>The Smacktivist</p>"
 
   describe "mapHoles" $ do
     it "should map a substitution over a list" $ do
-      (page', subst, mempty) `shouldRender` page''
+      (page, subst, mempty) `shouldRender` page'
 
   describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
@@ -115,3 +133,5 @@ spec = hspec $ do
   describe "findUnboundAttrs" $ do
     it "should find stuff matching the pattern ${blah}" $ do
       findUnboundAttrs [("foo", "${blah}")] `shouldBe` ["blah"]
+
+{-# ANN module ("HLint: ignore Redundant do" :: String) #-}
