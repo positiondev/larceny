@@ -11,8 +11,8 @@ import qualified Text.XmlHtml as X
 main :: IO ()
 main = spec
 
-page' :: Text
-page' = "<body>                    \
+page :: Text
+page = "<body>                    \
 \          <h1>                    \
 \            <name/>               \
 \          </h1>                   \
@@ -26,24 +26,24 @@ page' = "<body>                    \
 \          </ul>                   \
 \        </body>"
 
-page'' :: Text
-page'' = "<body>                         \
-\           <h1>Gotham Girls roster</h1> \
-\           <ul>                         \
-\             <li>                       \
-\               <h2>Bonnie Thunders</h2> \
-\               <p>jammer</p>            \
-\             </li>                      \
-\             <li>                       \
-\               <h2>Donna Matrix</h2>    \
-\               <p>blocker</p>           \
-\             </li>                      \
-\             <li>                       \
-\               <h2>V-Diva</h2>          \
-\               <p>jammer</p>            \
-\             </li>                      \
-\           </ul>                        \
-\         </body>"
+page' :: Text
+page' = "<body>                         \
+\          <h1>Gotham Girls roster</h1> \
+\          <ul>                         \
+\            <li>                       \
+\              <h2>Bonnie Thunders</h2> \
+\              <p>jammer</p>            \
+\            </li>                      \
+\            <li>                       \
+\              <h2>Donna Matrix</h2>    \
+\              <p>blocker</p>           \
+\            </li>                      \
+\            <li>                       \
+\              <h2>V-Diva</h2>          \
+\              <p>jammer</p>            \
+\            </li>                      \
+\          </ul>                        \
+\        </body>"
 
 subst :: Substitution
 subst = sub [ ("site-title", text "Gotham Girls roster")
@@ -65,7 +65,7 @@ spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
-      (page', subst, mempty) `shouldRender` page''
+      (page, subst, mempty) `shouldRender` page'
     it "should allow attributes" $ do
       ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
 
@@ -96,7 +96,7 @@ spec = hspec $ do
 
   describe "mapHoles" $ do
     it "should map a substitution over a list" $ do
-      (page', subst, mempty) `shouldRender` page''
+      (page, subst, mempty) `shouldRender` page'
 
   describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
