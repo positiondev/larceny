@@ -6,7 +6,6 @@ import           Data.Map           (Map)
 import qualified Data.Map           as M
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Monoid        ((<>))
---import           Data.Set           (Set)
 import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
@@ -19,39 +18,30 @@ type Substitution = Map Hole Fill
 newtype Template = Template { runTemplate :: Substitution -> Library -> Text }
 type Library = Map Text Template
 
--- what about overriding whitelisted tags? like <title/>
-
--- page' = parse "<body><head><title>Great site!</title></head>\
---               \ <site-title/>\
---               \ <people>\
---               \   <p><name/></p>\
---               \   <site-title/>\
---               \ </people>\
---               \</body>"
-
-need :: Map Hole a -> [Hole] -> c -> c
+need :: Map Hole Fill -> [Hole] -> Text -> Text
 need m keys rest =
   let sk = S.fromList keys
       sm = M.keysSet m
       d = S.difference sk sm
   in if S.null d
         then rest
-        else error $ "Missing keys: " <> (show d)
+        else error $ "Missing keys: " <> show d
 
 add :: Substitution -> Template -> Template
-add mouter tpl = Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
+add mouter tpl =
+  Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
 text :: Text -> Fill
-text t' = \_ _ _ -> t'
+text t' = \_m _t _l -> t'
 
 funFill :: (Map Text Text -> Text) -> Fill
 funFill fun = \m _t _l -> fun m
 
 i :: Text -> (Int -> a) -> Map Text Text -> a
-i attrName = \k attrs -> k (read $ T.unpack (attrs M.! attrName) :: Int)
+i attrName k attrs = k (read $ T.unpack (attrs M.! attrName) :: Int)
 
 t :: Text -> (Text -> a) -> Map Text Text -> a
-t attrName = \k attrs -> k (attrs M.! attrName)
+t attrName k attrs = k (attrs M.! attrName)
 
 (%) :: (a -> Map Text Text -> b)
     -> (b -> Map Text Text -> c)
@@ -70,19 +60,18 @@ sub = M.fromList . map (\(x,y) -> (Hole x, y))
 fill :: Substitution -> Fill
 fill s = \_m (Template tpl) -> tpl s
 
-specialNodes :: [Text]
-specialNodes = ["apply"]
-
 plainNodes :: [Text]
-plainNodes = ["body", "p", "h1", "img"]
+plainNodes = ["body", "p", "h1", "h2", "ul", "li", "img"]
 
 parse :: Text -> Template
-parse t' = let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t')
-          in mk nodes
+parse t' =
+  let Right (X.HtmlDocument _ _ nodes) = X.parseHTML "" (T.encodeUtf8 t')
+  in mk nodes
 
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
-           in Template $ \m l -> need m (map Hole unbound) (T.concat $ process m l unbound nodes)
+           in Template $ \m l ->
+                need m (map Hole unbound) (T.concat $ process m l unbound nodes)
 
 fillIn :: Text -> Substitution -> Fill
 fillIn tn m = m M.! Hole tn
@@ -92,14 +81,15 @@ process _ _ _ [] = []
 process m l unbound (n:ns) =
   case n of
     X.Element "apply" atr kids -> processApply m l atr kids
-    X.Element tn atr kids | tn `elem` plainNodes ->
-                                  processPlain m l unbound tn atr kids
+    X.Element tn atr kids | tn `elem` plainNodes
+                               -> processPlain m l unbound tn atr kids
     X.Element tn atr kids      -> processFancy m l tn atr kids
-    X.TextNode t'               -> [t']
+    X.TextNode t'              -> [t']
     X.Comment c                -> ["<!--" <> c <> "-->"]
   ++ process m l unbound ns
 
--- Add the open tag, process the children, then close the tag.
+-- Add the open tag and attributes, process the children, then close
+-- the tag.
 processPlain :: Substitution -> Library -> [Text] ->
                 Text -> [(Text, Text)] -> [X.Node] -> [Text]
 processPlain m l unbound tn atr kids =
@@ -129,24 +119,21 @@ processApply :: Substitution -> Library ->
                 [(Text, Text)] -> [X.Node] -> [Text]
 processApply m l atr kids =
   let tplName = fromMaybe
-                (error "Template to apply not found")
+                (error "No template name given.")
                 (lookup "name" atr)
       tplToApply = l M.! tplName
       contentSub = sub [("content",
-                         \_ _ _ -> runTemplate (mk kids) m l)] in
+                         text $ runTemplate (mk kids) m l)] in
   [ runTemplate tplToApply (contentSub `M.union` m) l ]
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
-findUnbound (n:ns) =
-  case n of
-   X.Element _ atr _ ->
-     if X.elementTag n `elem` plainNodes || X.elementTag n `elem` specialNodes
-     then findUnboundAttrs atr ++ findUnbound (X.elementChildren n)
-     else X.elementTag n : findUnboundAttrs atr
-   _ -> []
+findUnbound (X.Element tn atr kids:ns) =
+     if tn == "apply" || tn `elem` plainNodes
+     then findUnboundAttrs atr ++ findUnbound kids
+     else tn : findUnboundAttrs atr
    ++ findUnbound ns
-   where
+findUnbound (_:ns) = findUnbound ns
 
 findUnboundAttrs :: [(Text, Text)] -> [Text]
 findUnboundAttrs = mapMaybe mUnboundAttr
@@ -155,3 +142,6 @@ mUnboundAttr :: (Text, Text) -> Maybe Text
 mUnboundAttr (_, value) = do
   endVal <- T.stripPrefix "${" value
   T.stripSuffix "}" endVal
+
+{-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
+{-# ANN module ("HLint: ignore Use first" :: String) #-}
