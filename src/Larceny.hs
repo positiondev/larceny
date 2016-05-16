@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Larceny where
@@ -7,6 +8,7 @@ import qualified Data.Map           as M
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Monoid        ((<>))
 import qualified Data.Set           as S
+import           Data.String        (IsString, fromString)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
@@ -37,11 +39,16 @@ text t' = \_m _t _l -> t'
 funFill :: (Map Text Text -> Text) -> Fill
 funFill fun = \m _t _l -> fun m
 
-i :: Text -> (Int -> a) -> Map Text Text -> a
-i attrName k attrs = k (read $ T.unpack (attrs M.! attrName) :: Int)
+class FromAttr a where
+  readAttr :: Text -> Map Text Text -> a
 
-t :: Text -> (Text -> a) -> Map Text Text -> a
-t attrName k attrs = k (attrs M.! attrName)
+instance FromAttr Text where
+  readAttr attrName attrs = attrs M.! attrName
+instance FromAttr Int where
+  readAttr attrName attrs = read $ T.unpack (attrs M.! attrName)
+
+a :: FromAttr a => Text -> (a -> b) -> Map Text Text -> b
+a attrName k attrs = k (readAttr attrName attrs)
 
 (%) :: (a -> Map Text Text -> b)
     -> (b -> Map Text Text -> c)

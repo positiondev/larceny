@@ -12,7 +12,7 @@ main :: IO ()
 main = spec
 
 page :: Text
-page = "<body>                    \
+page = "<body>                     \
 \          <h1>                    \
 \            <name/>               \
 \          </h1>                   \
@@ -101,23 +101,23 @@ spec = hspec $ do
   describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
       ("<desc length=\"10\" />",
-       sub [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length") :: Int)
+       sub [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length"))
                                "A really long description"
                                <> "...")],
         mempty) `shouldRender` "A really l..."
 
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       sub [("desc", funFill (i"length" (\n -> T.take n
-                                               "A really long description"
-                                               <> "...")))],
+       sub [("desc", funFill (a"length" (\n -> T.take n
+                                         "A really long description"
+                                         <> "...")))],
         mempty) `shouldRender` "A really l..."
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       sub [("desc", funFill ((i"length" %
-                               t"text")
-                               (\n d -> T.take n d <> "...")))],
+       sub [("desc", funFill ((a"length" %
+                               a"text")
+                              (\n d -> T.take n d <> "...")))],
         mempty) `shouldRender` "A really l..."
 
   describe "attributes" $ do
