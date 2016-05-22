@@ -45,9 +45,9 @@ subst = sub [ ("site-title", text "Gotham Girls roster")
                           [ ("Bonnie Thunders", "jammer")
                           , ("Donna Matrix", "blocker")
                           , ("V-Diva", "jammer") ] )
-            , ("desc", funFill ((a"length" ᳀
-                               a"text")
-                              (\n d -> T.take n d <> "...")))]
+            , ("desc", funFill ((a"length" %
+                                 a"text")
+                                (\n d -> T.take n d <> "...")))]
 
 tplLib :: Library
 tplLib = M.fromList [("skater", (parse "Beyonslay") )]
