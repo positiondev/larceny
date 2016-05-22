@@ -14,6 +14,7 @@ import           Data.Text                  (Text)
 import           Data.Text.Encoding         (decodeUtf8, encodeUtf8)
 import           Examples
 import           Heist
+import qualified Heist.Compiled             as HC
 import           Heist.Internal.Types
 import qualified Heist.Interpreted          as HI
 import qualified Text.XmlHtml               as X
@@ -28,64 +29,94 @@ main =
                          , bench "applyTemplate" $ nf runTpl tpl3
                          , bench "mapFills" $ nf runTpl tpl4
                          , bench "funFill" $ nf runTpl tpl5]
-    , bgroup "heist" [ bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
-                     , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
-                     , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
-                     ]
+    , bgroup "interpreted heist" [
+         bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
+       , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
+       , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
+       ]
+      -- still need compiled Heist
     ]
 
 runTpl :: Text -> Text
 runTpl x = runTemplate (parse x) subst tplLib
 
-splices :: MonadIO m => Splices (HI.Splice m)
-splices = do "site-title" ## siteTitleSplice
-             "name"       ## siteTitleSplice
-             "skater"     ## skaterSplices
-             "skaters"    ## skatersSplice
-    --         "desc"       ## descSplice
+splicesI :: MonadIO m => Splices (HI.Splice m)
+splicesI = do "site-title" ## siteTitleSpliceI
+              "name"       ## siteTitleSpliceI
+              "skater"     ## skaterSplicesI
+              "skaters"    ## skatersSpliceI
+    --        "desc"       ## descSplice
 
-siteTitleSplice :: MonadIO m => HI.Splice m
-siteTitleSplice = return [X.TextNode "Gotham Girls roster"]
+siteTitleSpliceI :: MonadIO m => HI.Splice m
+siteTitleSpliceI = HI.textSplice "Gotham Girls roster"
 
-textSplice :: MonadIO m => Text -> HI.Splice m
-textSplice t' = return [X.TextNode t']
+skaterSplicesI :: MonadIO m => HI.Splice m
+skaterSplicesI = HI.runChildrenWith $ "name" ## HI.textSplice "Amy Roundhouse"
 
-skaterSplices :: MonadIO m => HI.Splice m
-skaterSplices = HI.runChildrenWith $ "name" ## textSplice "Amy Roundhouse"
+skatersSpliceI :: MonadIO m => HI.Splice m
+skatersSpliceI = HI.mapSplices namePositionSpliceI
+                 [ ("Bonnie Thunders", "jammer")
+                 , ("Donna Matrix", "blocker")
+                 , ("V-Diva", "jammer") ]
 
-skatersSplice :: MonadIO m => HI.Splice m
-skatersSplice = HI.mapSplices namePositionSplice
-                [("Bonnie Thunders", "jammer")
-                ,("Donna Matrix", "blocker")
-                ,("V-Diva", "jammer")]
-
-namePositionSplice :: MonadIO m => (Text, Text) -> HI.Splice m
-namePositionSplice (n, p) =
+namePositionSpliceI :: MonadIO m => (Text, Text) -> HI.Splice m
+namePositionSpliceI (n, p) =
   HI.runChildrenWith $ do
-    "name" ## textSplice n
-    "position" ## textSplice p
+    "name"     ## HI.textSplice n
+    "position" ## HI.textSplice p
 
-{-
+{- How to get attributes?
 descSplice :: MonadIO m => HI.Splice m
 descSplice = undefined
 -}
 
+{-
+splicesC :: MonadIO m => Splices (HC.Splice m)
+splicesC = do "site-title" ## siteTitleSpliceC
+              "name"       ## siteTitleSpliceC
+    --        "skater"     ## skaterSplicesC
+    --        "skaters"    ## skatersSpliceC
+    --         "desc"       ## descSplice
+
+siteTitleSpliceC :: MonadIO m => HC.Splice m
+siteTitleSpliceC = HC.textSplice "Gotham Girls roster"
+-}
+
+{- How to do `runChildrenWith` in HC?
+skaterSplicesC :: MonadIO m => HC.Splice m
+skaterSplicesC = HC.runChildrenWith $ "name" ## HC.textSplice "Amy Roundhouse"
+-}
+
+{-
+skatersSpliceC :: MonadIO m => HC.Splice m
+skatersSpliceC = HC.deferMany namePositionSpliceC
+                [("Bonnie Thunders", "jammer")
+                ,("Donna Matrix", "blocker")
+                ,("V-Diva", "jammer")]
+
+namePositionSpliceC :: MonadIO m => (Text, Text) -> HC.Splice m
+namePositionSpliceC (n, p) =
+  HC.runChildrenWith $ do
+    "name" ## HC.textSplice n
+    "position" ## HC.textSplice p
+-}
+
 doHeist :: BS.ByteString -> Text -> IO Text
 doHeist tplName htpl = do
-  eitherHs <- runEitherT $ initHeist (templateHC tplName htpl)
+  eitherHs <- runEitherT $ initHeist (heistConf tplName htpl)
   let hs = case eitherHs of
             Left e -> error $ concat e
             Right x -> x
-  mBuilderMIME <- HI.renderTemplate hs tplName
-  case mBuilderMIME of
+  mTextMIME <- HI.renderTemplate hs tplName
+  case mTextMIME of
    Nothing -> error "blah"
-   Just (h,_) -> return $ decodeUtf8 $ toStrict $ toLazyByteString h
+   Just (html,_) -> return $ decodeUtf8 $ toStrict $ toLazyByteString html
 
-templateHC :: BS.ByteString -> Text -> HeistConfig IO
-templateHC tplName htpl = HeistConfig sc "" False
+heistConf :: BS.ByteString -> Text -> HeistConfig IO
+heistConf tplName htpl = HeistConfig sc "" False
   where
     sc = mempty &
-         scInterpretedSplices .~ splices &
+         scInterpretedSplices .~ splicesI &
          scTemplateLocations .~ [EitherT $ return (hTplRepo tplName htpl)]
 
 hTplRepo :: BS.ByteString -> Text -> Either [String] TemplateRepo
@@ -93,4 +124,6 @@ hTplRepo tplName htpl =
   case parsed of
     Left e -> Left [e]
     Right d -> Right (H.fromList [([tplName], d)])
-  where parsed = fmap (\x -> DocumentFile x (Just (unpack tplName))) (X.parseHTML (unpack tplName) (encodeUtf8 htpl))
+  where parsed = fmap (\x -> DocumentFile x mBSTplName) docFile
+        mBSTplName = Just (unpack tplName)
+        docFile = X.parseHTML (unpack tplName) (encodeUtf8 htpl)
