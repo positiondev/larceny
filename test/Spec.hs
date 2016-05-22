@@ -4,6 +4,7 @@ import qualified Data.Map     as M
 import           Data.Monoid  ((<>))
 import           Data.Text    (Text)
 import qualified Data.Text    as T
+import           Examples
 import           Larceny
 import           Test.Hspec
 import qualified Text.XmlHtml as X
@@ -11,23 +12,9 @@ import qualified Text.XmlHtml as X
 main :: IO ()
 main = spec
 
-page :: Text
-page = "<body>                     \
-\          <h1>                    \
-\            <name/>               \
-\          </h1>                   \
-\          <ul>                    \
-\            <skaters>             \
-\              <li>                \
-\                <h2><name/></h2>  \
-\                <p><position/></p>\
-\              </li>               \
-\            </skaters>            \
-\          </ul>                   \
-\        </body>"
-
-page' :: Text
-page' = "<body>                         \
+tpl4Output :: Text
+tpl4Output = "\
+\        <body>                         \
 \          <h1>Gotham Girls roster</h1> \
 \          <ul>                         \
 \            <li>                       \
@@ -45,17 +32,6 @@ page' = "<body>                         \
 \          </ul>                        \
 \        </body>"
 
-subst :: Substitution
-subst = sub [ ("site-title", text "Gotham Girls roster")
-            , ("name", text "Gotham Girls roster")
-            , ("skater", fill $ sub [("name", text "Amy Roundhouse")])
-            , ("skaters", mapSub
-                          (\(n, p) -> sub [("name", text n)
-                                          ,("position", text p)])
-                          [ ("Bonnie Thunders", "jammer")
-                          , ("Donna Matrix", "blocker")
-                          , ("V-Diva", "jammer") ] )]
-
 shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
 shouldRender (t', s, l) output =
   T.replace " " "" (runTemplate (parse t') s l) `shouldBe`
@@ -65,7 +41,7 @@ spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
-      (page, subst, mempty) `shouldRender` page'
+      (tpl4, subst, mempty) `shouldRender` tpl4Output
     it "should allow attributes" $ do
       ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
 
@@ -96,7 +72,7 @@ spec = hspec $ do
 
   describe "mapHoles" $ do
     it "should map a substitution over a list" $ do
-      (page, subst, mempty) `shouldRender` page'
+      (tpl4, subst, mempty) `shouldRender` tpl4Output
 
   describe "funky fills" $ do
     it "should allow you to write functions for fills" $ do
@@ -115,7 +91,7 @@ spec = hspec $ do
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       sub [("desc", funFill ((a"length" %
+       sub [("desc", funFill ((a"length" ᳀
                                a"text")
                               (\n d -> T.take n d <> "...")))],
         mempty) `shouldRender` "A really l..."

@@ -1,4 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module Larceny where
@@ -8,7 +7,6 @@ import qualified Data.Map           as M
 import           Data.Maybe         (fromMaybe, mapMaybe)
 import           Data.Monoid        ((<>))
 import qualified Data.Set           as S
-import           Data.String        (IsString, fromString)
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
@@ -104,11 +102,11 @@ processPlain m l unbound tn atr kids =
   ++ process m l unbound kids
   ++ ["</" <> tn <> ">"]
   where attrsToText attrs = T.concat $ map attrToText attrs
-        attrToText a =
-          case mUnboundAttr a of
-            Just hole -> " " <> fst a <> "=\"" <>
+        attrToText (k,v) =
+          case mUnboundAttr (k,v) of
+            Just hole -> " " <> k <> "=\"" <>
                          fillIn hole m mempty (mk []) l  <> "\""
-            Nothing   -> " " <> fst a <> "=\"" <> snd a <> "\""
+            Nothing   -> " " <> k <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the

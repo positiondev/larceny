@@ -32,7 +32,7 @@ library
 test-suite test
   main-is:             Spec.hs
   type:                exitcode-stdio-1.0
-  -- other-modules:
+  other-modules:       Examples
   other-extensions:    OverloadedStrings
   build-depends:       base >=4.8 && <4.9
                      , containers >=0.5 && <0.6
@@ -40,5 +40,28 @@ test-suite test
                      , hspec >=2.2 && <2.3
                      , xmlhtml
                      , larceny
+  hs-source-dirs:      test
+  default-language:    Haskell2010
+
+
+benchmark bench
+  main-is:             Bench.hs
+  type:                exitcode-stdio-1.0
+  other-modules:       Examples
+  other-extensions:    OverloadedStrings
+  build-depends:       base >=4.8 && <4.9
+                     , containers >=0.5 && <0.6
+                     , text >=1.2 && <1.3
+                     , hspec >=2.2 && <2.3
+                     , xmlhtml
+                     , larceny
+                     , criterion
+                     , unordered-containers
+                     , blaze-builder
+                     , heist
+                     , lens
+                     , either
+                     , bytestring
+                     , mtl
   hs-source-dirs:      test
   default-language:    Haskell2010
