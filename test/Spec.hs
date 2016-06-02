@@ -91,7 +91,7 @@ spec = hspec $ do
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       sub [("desc", funFill ((a"length" ᳀
+       sub [("desc", funFill ((a"length" %
                                a"text")
                               (\n d -> T.take n d <> "...")))],
         mempty) `shouldRender` "A really l..."
