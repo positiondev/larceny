@@ -32,7 +32,7 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-shouldRender :: (Text, Substitution, Library) -> Text -> Expectation
+shouldRender :: (Text, BlankFills, Library) -> Text -> Expectation
 shouldRender (t', s, l) output =
   T.replace " " "" (runTemplate (parse t') s l) `shouldBe`
   T.replace " " "" output
@@ -56,7 +56,7 @@ spec = hspec $ do
        M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
       ("<apply name=\"skater\" />",
-       sub [("alias", text "Fifi Nomenom")],
+       fills [("alias", text "Fifi Nomenom")],
        M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply name=\"skater\">V-Diva</apply>",
@@ -64,42 +64,43 @@ spec = hspec $ do
        M.fromList [("skater", parse "<content />")]) `shouldRender` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply name=\"_base\"><p>The Smacktivist</p></apply>",
-       sub [("siteTitle", text "Ohio Roller Girls")],
+       fills [("siteTitle", text "Ohio Roller Girls")],
        M.fromList [("_base", parse "<h1><siteTitle /></h1>\
                                    \<content />")])
         `shouldRender` "<h1>Ohio Roller Girls</h1>\
                        \<p>The Smacktivist</p>"
 
-  describe "mapHoles" $ do
-    it "should map a substitution over a list" $ do
+  describe "mapFills" $ do
+    it "should map the fills over a list" $ do
       (tpl4, subst, mempty) `shouldRender` tpl4Output
 
-  describe "funky fills" $ do
+  describe "writing functions" $ do
     it "should allow you to write functions for fills" $ do
       ("<desc length=\"10\" />",
-       sub [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length"))
+       fills [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length"))
                                "A really long description"
                                <> "...")],
         mempty) `shouldRender` "A really l..."
 
+  describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       sub [("desc", funFill (a"length" (\n -> T.take n
-                                         "A really long description"
-                                         <> "...")))],
+       fills [("desc", useAttrs (a"length" (\n -> T.take n
+                                            "A really long description"
+                                            <> "...")))],
         mempty) `shouldRender` "A really l..."
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       sub [("desc", funFill ((a"length" %
-                               a"text")
-                              (\n d -> T.take n d <> "...")))],
+       fills [("desc", useAttrs ((a"length" %
+                                  a"text")
+                                 (\n d -> T.take n d <> "...")))],
         mempty) `shouldRender` "A really l..."
 
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
       ("<p id=\"${skater}\"><skater /></p>",
-       sub [("skater", text "Beyonslay")],
+       fills [("skater", text "Beyonslay")],
        mempty) `shouldRender` "<p id=\"Beyonslay\">Beyonslay</p>"
 
   describe "findUnbound" $ do

@@ -35,17 +35,17 @@ tpl4 = "<body>                     \
 tpl5 :: Text
 tpl5 = "<desc length=\"10\" text=\"A really long description\" />"
 
-subst :: Substitution
-subst = sub [ ("site-title", text "Gotham Girls roster")
+subst :: BlankFills
+subst = fills [ ("site-title", text "Gotham Girls roster")
             , ("name", text "Gotham Girls roster")
-            , ("skater", fill $ sub [("name", text "Amy Roundhouse")])
-            , ("skaters", mapSub
-                          (\(n, p) -> sub [("name", text n)
-                                          ,("position", text p)])
+            , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
+            , ("skaters", mapFills
+                          (\(n, p) -> fills [("name", text n)
+                                            ,("position", text p)])
                           [ ("Bonnie Thunders", "jammer")
                           , ("Donna Matrix", "blocker")
                           , ("V-Diva", "jammer") ] )
-            , ("desc", funFill ((a"length" %
+            , ("desc", useAttrs ((a"length" %
                                  a"text")
                                 (\n d -> T.take n d <> "...")))]
 
