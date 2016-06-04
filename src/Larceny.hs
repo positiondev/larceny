@@ -10,11 +10,12 @@ import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
+import           System.IO.Unsafe   (unsafePerformIO)
 import qualified Text.XmlHtml       as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord)
 type AttrArgs = Map Text Text
-type Fill = AttrArgs -> Template -> Library -> Text
+type Fill = AttrArgs -> Template -> Library -> IO Text
 type BlankFills = Map Blank Fill
 newtype Template = Template { runTemplate :: BlankFills -> Library -> Text }
 type Library = Map Text Template
@@ -33,9 +34,9 @@ add mouter tpl =
   Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
 text :: Text -> Fill
-text t = \_m _t _l -> t
+text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> Text) -> Fill
+useAttrs :: (AttrArgs -> IO Text) -> Fill
 useAttrs f = \m _t _l -> f m
 
 class FromAttr a where
@@ -56,15 +57,15 @@ a attrName k attrs = k (readAttr attrName attrs)
 
 mapFills :: (a -> BlankFills) -> [a] -> Fill
 mapFills f xs = \_m tpl lib ->
-  T.concat $
-  map (\n ->
-        runTemplate tpl (f n) lib) xs
+  return $ T.concat $
+           map (\n ->
+                 runTemplate tpl (f n) lib) xs
 
 fills :: [(Text, Fill)] -> BlankFills
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
 fill :: BlankFills -> Fill
-fill s = \_m (Template tpl) -> tpl s
+fill m = \_m (Template tpl) l -> return $ tpl m l
 
 plainNodes :: [Text]
 plainNodes = ["body", "p", "h1", "h2", "ul", "li", "img"]
@@ -106,7 +107,7 @@ processPlain m l unbound tn atr kids =
         attrToText (k,v) =
           case mUnboundAttr (k,v) of
             Just hole -> " " <> k <> "=\"" <>
-                         fillIn hole m mempty (mk []) l  <> "\""
+                         (unsafePerformIO $ fillIn hole m mempty (mk []) l)  <> "\""
             Nothing   -> " " <> k <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -115,7 +116,7 @@ processPlain m l unbound tn atr kids =
 processFancy :: BlankFills -> Library ->
                 Text -> [(Text, Text)] -> [X.Node] -> [Text]
 processFancy m l tn atr kids =
-  [ fillIn tn m (M.fromList atr) (add m (mk kids)) l]
+  [ unsafePerformIO $ fillIn tn m (M.fromList atr) (add m (mk kids)) l]
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements

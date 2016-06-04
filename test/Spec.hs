@@ -77,15 +77,24 @@ spec = hspec $ do
   describe "writing functions" $ do
     it "should allow you to write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", \m _t _l -> T.take (read $ T.unpack (m M.! "length"))
+       fills [("desc", \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
                                "A really long description"
                                <> "...")],
+        mempty) `shouldRender` "A really l..."
+
+
+    it "should allow you to use IO in fills" $ do
+      ("<desc length=\"10\" />",
+       fills [("desc", \m _t _l -> do putStrLn "***********\nHello World\n***********"
+                                      return $ T.take (read $ T.unpack (m M.! "length"))
+                                               "A really long description"
+                                               <> "...")],
         mempty) `shouldRender` "A really l..."
 
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", useAttrs (a"length" (\n -> T.take n
+       fills [("desc", useAttrs (a"length" (\n -> return $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldRender` "A really l..."
@@ -94,7 +103,7 @@ spec = hspec $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
        fills [("desc", useAttrs ((a"length" %
                                   a"text")
-                                 (\n d -> T.take n d <> "...")))],
+                                 (\n d -> return $ T.take n d <> "...")))],
         mempty) `shouldRender` "A really l..."
 
   describe "attributes" $ do
