@@ -14,9 +14,9 @@ import qualified Text.XmlHtml       as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord)
 type AttrArgs = Map Text Text
-type Fill = AttrArgs -> Template -> Library -> Text
+type Fill = AttrArgs -> Template -> Library -> IO Text
 type BlankFills = Map Blank Fill
-newtype Template = Template { runTemplate :: BlankFills -> Library -> Text }
+newtype Template = Template { runTemplate :: BlankFills -> Library -> IO Text }
 type Library = Map Text Template
 
 need :: Map Blank Fill -> [Blank] -> Text -> Text
@@ -33,9 +33,9 @@ add mouter tpl =
   Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
 
 text :: Text -> Fill
-text t = \_m _t _l -> t
+text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> Text) -> Fill
+useAttrs :: (AttrArgs -> IO Text) -> Fill
 useAttrs f = \m _t _l -> f m
 
 class FromAttr a where
@@ -56,15 +56,15 @@ a attrName k attrs = k (readAttr attrName attrs)
 
 mapFills :: (a -> BlankFills) -> [a] -> Fill
 mapFills f xs = \_m tpl lib ->
-  T.concat $
-  map (\n ->
-        runTemplate tpl (f n) lib) xs
+  T.concat <$>
+           mapM (\n ->
+                 runTemplate tpl (f n) lib) xs
 
 fills :: [(Text, Fill)] -> BlankFills
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
 fill :: BlankFills -> Fill
-fill s = \_m (Template tpl) -> tpl s
+fill m = \_m (Template tpl) l -> tpl m l
 
 plainNodes :: [Text]
 plainNodes = ["body", "p", "h1", "h2", "ul", "li", "img"]
@@ -77,60 +77,66 @@ parse t =
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
            in Template $ \m l ->
-                need m (map Blank unbound) (T.concat $ process m l unbound nodes)
+                need m (map Blank unbound) <$> (T.concat <$> process m l unbound nodes)
 
 fillIn :: Text -> BlankFills -> Fill
 fillIn tn m = m M.! Blank tn
 
-process :: BlankFills -> Library -> [Text] -> [X.Node] -> [Text]
-process _ _ _ [] = []
-process m l unbound (n:ns) =
-  case n of
-    X.Element "apply" atr kids -> processApply m l atr kids
-    X.Element tn atr kids | tn `elem` plainNodes
-                               -> processPlain m l unbound tn atr kids
-    X.Element tn atr kids      -> processFancy m l tn atr kids
-    X.TextNode t              -> [t]
-    X.Comment c                -> ["<!--" <> c <> "-->"]
-  ++ process m l unbound ns
+process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
+process _ _ _ [] = return []
+process m l unbound (n:ns) = do
+  processedNode <-
+    case n of
+      X.Element "apply" atr kids -> processApply m l atr kids
+      X.Element tn atr kids | tn `elem` plainNodes
+                                 -> processPlain m l unbound tn atr kids
+      X.Element tn atr kids      -> processFancy m l tn atr kids
+      X.TextNode t               -> return [t]
+      X.Comment c                -> return ["<!--" <> c <> "-->"]
+  restOfNodes <- process m l unbound ns
+  return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
 processPlain :: BlankFills -> Library -> [Text] ->
-                Text -> [(Text, Text)] -> [X.Node] -> [Text]
-processPlain m l unbound tn atr kids =
-  ["<" <> tn <> attrsToText atr <> ">"]
-  ++ process m l unbound kids
-  ++ ["</" <> tn <> ">"]
-  where attrsToText attrs = T.concat $ map attrToText attrs
+                Text -> [(Text, Text)] -> [X.Node] -> IO [Text]
+processPlain m l unbound tn atr kids = do
+  atrs <- attrsToText atr
+  processed <- process m l unbound kids
+  return $ ["<" <> tn <> atrs <> ">"]
+           ++ processed
+           ++ ["</" <> tn <> ">"]
+  where attrsToText attrs = T.concat <$> mapM attrToText attrs
+        attrToText :: (Text, Text) -> IO Text
         attrToText (k,v) =
           case mUnboundAttr (k,v) of
-            Just hole -> " " <> k <> "=\"" <>
-                         fillIn hole m mempty (mk []) l  <> "\""
-            Nothing   -> " " <> k <> "=\"" <> v <> "\""
+            Just hole -> do filledIn <- fillIn hole m mempty (mk []) l
+                            return $ " " <> k <> "=\"" <> filledIn  <> "\""
+            Nothing   -> return $ " " <> k <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
 processFancy :: BlankFills -> Library ->
-                Text -> [(Text, Text)] -> [X.Node] -> [Text]
+                Text -> [(Text, Text)] -> [X.Node] -> IO [Text]
 processFancy m l tn atr kids =
-  [ fillIn tn m (M.fromList atr) (add m (mk kids)) l]
+  sequence [ fillIn tn m (M.fromList atr) (add m (mk kids)) l]
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
 processApply :: BlankFills -> Library ->
-                [(Text, Text)] -> [X.Node] -> [Text]
-processApply m l atr kids =
+                [(Text, Text)] -> [X.Node] -> IO [Text]
+processApply m l atr kids = do
   let tplName = fromMaybe
                 (error "No template name given.")
                 (lookup "name" atr)
-      tplToApply = l M.! tplName
-      contentSub = fills [("content",
-                          text $ runTemplate (mk kids) m l)] in
-  [ runTemplate tplToApply (contentSub `M.union` m) l ]
+  let tplToApply = l M.! tplName
+  contentTpl <- runTemplate (mk kids) m l
+  let contentSub = fills [("content",
+                        text contentTpl)]
+  sequence [ runTemplate tplToApply (contentSub `M.union` m) l ]
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
