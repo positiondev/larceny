@@ -10,7 +10,6 @@ import qualified Data.Set           as S
 import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
-import           System.IO.Unsafe   (unsafePerformIO)
 import qualified Text.XmlHtml       as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord)
@@ -78,22 +77,24 @@ parse t =
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
            in Template $ \m l ->
-                return $ need m (map Blank unbound) (T.concat $ process m l unbound nodes)
+                need m (map Blank unbound) <$> (T.concat <$> process m l unbound nodes)
 
 fillIn :: Text -> BlankFills -> Fill
 fillIn tn m = m M.! Blank tn
 
-process :: BlankFills -> Library -> [Text] -> [X.Node] -> [Text]
-process _ _ _ [] = []
-process m l unbound (n:ns) =
-  case n of
-    X.Element "apply" atr kids -> unsafePerformIO $ processApply m l atr kids
-    X.Element tn atr kids | tn `elem` plainNodes
-                               -> unsafePerformIO $ processPlain m l unbound tn atr kids
-    X.Element tn atr kids      -> unsafePerformIO $ processFancy m l tn atr kids
-    X.TextNode t              -> [t]
-    X.Comment c                -> ["<!--" <> c <> "-->"]
-  ++ process m l unbound ns
+process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
+process _ _ _ [] = return []
+process m l unbound (n:ns) = do
+  processedNode <-
+    case n of
+      X.Element "apply" atr kids -> processApply m l atr kids
+      X.Element tn atr kids | tn `elem` plainNodes
+                                 -> processPlain m l unbound tn atr kids
+      X.Element tn atr kids      -> processFancy m l tn atr kids
+      X.TextNode t               -> return [t]
+      X.Comment c                -> return ["<!--" <> c <> "-->"]
+  restOfNodes <- process m l unbound ns
+  return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
@@ -101,8 +102,9 @@ processPlain :: BlankFills -> Library -> [Text] ->
                 Text -> [(Text, Text)] -> [X.Node] -> IO [Text]
 processPlain m l unbound tn atr kids = do
   atrs <- attrsToText atr
+  processed <- process m l unbound kids
   return $ ["<" <> tn <> atrs <> ">"]
-           ++ process m l unbound kids
+           ++ processed
            ++ ["</" <> tn <> ">"]
   where attrsToText attrs = T.concat <$> mapM attrToText attrs
         attrToText :: (Text, Text) -> IO Text

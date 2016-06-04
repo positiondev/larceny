@@ -1,14 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.Map         as M
-import           Data.Monoid      ((<>))
-import           Data.Text        (Text)
-import qualified Data.Text        as T
+import qualified Data.Map     as M
+import           Data.Monoid  ((<>))
+import           Data.Text    (Text)
+import qualified Data.Text    as T
 import           Examples
 import           Larceny
-import           System.IO.Unsafe (unsafePerformIO)
 import           Test.Hspec
-import qualified Text.XmlHtml     as X
+import qualified Text.XmlHtml as X
 
 main :: IO ()
 main = spec
@@ -34,9 +33,10 @@ tpl4Output = "\
 \        </body>"
 
 shouldRender :: (Text, BlankFills, Library) -> Text -> Expectation
-shouldRender (t', s, l) output =
-  T.replace " " "" (unsafePerformIO $ runTemplate (parse t') s l) `shouldBe`
-  T.replace " " "" output
+shouldRender (t', s, l) output = do
+  rendered <- runTemplate (parse t') s l
+  T.replace " " "" rendered `shouldBe`
+    T.replace " " "" output
 
 spec :: IO ()
 spec = hspec $ do
