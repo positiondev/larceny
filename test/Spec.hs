@@ -15,7 +15,9 @@ main = spec
 tpl4Output :: Text
 tpl4Output = "\
 \        <body>                         \
-\          <h1>Gotham Girls roster</h1> \
+\          <h1>                         \
+\            Gotham Girls Roller Derby  \
+\          </h1>                        \
 \          <ul>                         \
 \            <li>                       \
 \              <h2>Bonnie Thunders</h2> \
@@ -48,7 +50,7 @@ spec = hspec $ do
 
   describe "add" $ do
     it "should allow overriden tags" $ do
-      ("<name /><skater><name /></skater>", subst, mempty) `shouldRender` "Gotham Girls roster Amy Roundhouse"
+      ("<name /><skater><name /></skater>", subst, mempty) `shouldRender` "Gotham Girls Amy Roundhouse"
 
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do

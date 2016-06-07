@@ -19,8 +19,11 @@ tpl3 = "<apply name=\"skater\" />"
 
 tpl4 :: Text
 tpl4 = "<body>                     \
+\          <bind tag=\"sport\">    \
+\            Roller Derby          \
+\          </bind>                 \
 \          <h1>                    \
-\            <name/>               \
+\            <name/> <sport/>      \
 \          </h1>                   \
 \          <ul>                    \
 \            <skaters>             \
@@ -37,7 +40,7 @@ tpl5 = "<desc length=\"10\" text=\"A really long description\" />"
 
 subst :: BlankFills
 subst = fills [ ("site-title", text "Gotham Girls roster")
-            , ("name", text "Gotham Girls roster")
+            , ("name", text "Gotham Girls")
             , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
             , ("skaters", mapFills
                           (\(n, p) -> fills [("name", text n)
