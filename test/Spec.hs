@@ -67,12 +67,12 @@ spec = hspec $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"skater\">V-Diva</apply>",
        mempty,
-       M.fromList [("skater", parse "<content />")]) `shouldRender` "V-Diva"
+       M.fromList [("skater", parse "<apply-content />")]) `shouldRender` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply template=\"_base\"><p>The Smacktivist</p></apply>",
        fills [("siteTitle", text "Ohio Roller Girls")],
        M.fromList [("_base", parse "<h1><siteTitle /></h1>\
-                                   \<content />")])
+                                   \<apply-content />")])
         `shouldRender` "<h1>Ohio Roller Girls</h1>\
                        \<p>The Smacktivist</p>"
 

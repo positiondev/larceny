@@ -142,7 +142,7 @@ processApply m l atr kids = do
           Nothing  -> error $ T.unpack
                       ("Template \"" <> tplName <> "\" not found")
   contentTpl <- runTemplate (mk kids) m l
-  let contentSub = fills [("content",
+  let contentSub = fills [("apply-content",
                         text contentTpl)]
   sequence [ runTemplate tplToApply (contentSub `M.union` m) l ]
 
