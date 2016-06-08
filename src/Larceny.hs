@@ -20,7 +20,7 @@ type AttrArgs = Map Text Text
 type Fill = AttrArgs -> Template -> Library -> IO Text
 type BlankFills = Map Blank Fill
 newtype Template = Template { runTemplate :: BlankFills -> Library -> IO Text }
-type Library = Map Text Template
+type Library = Map [Text] Template
 
 need :: Map Blank Fill -> [Blank] -> Text -> Text
 need m keys rest =
@@ -136,11 +136,9 @@ processApply m l atr kids = do
   let tplName = fromMaybe
                 (error "No template name given.")
                 (lookup "template" atr)
-  let tplToApply =
-        case M.lookup tplName l of
-          Just tpl -> tpl
-          Nothing  -> error $ T.unpack
-                      ("Template \"" <> tplName <> "\" not found")
+  let tplToApply = case M.lookup [tplName] l of
+                     Nothing -> error $ "Couldn't find " <> T.unpack tplName <> " in " <> show (M.keys l)
+                     Just tpl -> tpl
   contentTpl <- runTemplate (mk kids) m l
   let contentSub = fills [("apply-content",
                         text contentTpl)]
