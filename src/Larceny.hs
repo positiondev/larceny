@@ -100,20 +100,19 @@ fillIn tn m = m M.! Blank tn
 
 process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
 process _ _ _ [] = return []
+process m l unbound (X.Element "bind" [("tag", tn)] kids:ns) =
+  let newFills = fills [(tn, \atrs t l -> runTemplate (mk kids) m l)] in
+  process (newFills `M.union` m) l unbound ns
 process m l unbound (n:ns)= do
-  let m' = if X.tagName n == Just "bind"
-           then addBind n m
-           else m
   processedNode <-
     case n of
-      X.Element "bind" _ _       -> return []
       X.Element "apply" atr kids -> processApply m l atr kids
       X.Element tn atr kids | tn `elem` plainNodes
                                  -> processPlain m l unbound tn atr kids
       X.Element tn atr kids      -> processFancy m l tn atr kids
       X.TextNode t               -> return [t]
       X.Comment c                -> return ["<!--" <> c <> "-->"]
-  restOfNodes <- process m' l unbound ns
+  restOfNodes <- process m l unbound ns
   return $ processedNode ++ restOfNodes
 
 addBind :: X.Node -> BlankFills -> BlankFills
