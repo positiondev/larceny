@@ -15,7 +15,7 @@ tpl2 :: Text
 tpl2 = "<h1><name/></h1>"
 
 tpl3 :: Text
-tpl3 = "<apply name=\"skater\" />"
+tpl3 = "<apply template=\"skater\" />"
 
 tpl4 :: Text
 tpl4 = "<body>                     \

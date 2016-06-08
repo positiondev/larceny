@@ -52,19 +52,19 @@ spec = hspec $ do
 
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
-      ("<apply name=\"hello\" />",
+      ("<apply template=\"hello\" />",
        mempty,
        M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
-      ("<apply name=\"skater\" />",
+      ("<apply template=\"skater\" />",
        fills [("alias", text "Fifi Nomenom")],
        M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
-      ("<apply name=\"skater\">V-Diva</apply>",
+      ("<apply template=\"skater\">V-Diva</apply>",
        mempty,
        M.fromList [("skater", parse "<content />")]) `shouldRender` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
-      ("<apply name=\"_base\"><p>The Smacktivist</p></apply>",
+      ("<apply template=\"_base\"><p>The Smacktivist</p></apply>",
        fills [("siteTitle", text "Ohio Roller Girls")],
        M.fromList [("_base", parse "<h1><siteTitle /></h1>\
                                    \<content />")])

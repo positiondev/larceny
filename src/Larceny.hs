@@ -135,8 +135,12 @@ processApply :: BlankFills -> Library ->
 processApply m l atr kids = do
   let tplName = fromMaybe
                 (error "No template name given.")
-                (lookup "name" atr)
-  let tplToApply = l M.! tplName
+                (lookup "template" atr)
+  let tplToApply =
+        case M.lookup tplName l of
+          Just tpl -> tpl
+          Nothing  -> error $ T.unpack
+                      ("Template \"" <> tplName <> "\" not found")
   contentTpl <- runTemplate (mk kids) m l
   let contentSub = fills [("content",
                         text contentTpl)]
