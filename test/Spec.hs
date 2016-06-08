@@ -95,7 +95,7 @@ spec = hspec $ do
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", useAttrs (a"length" (\n -> return $ T.take n
+       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldRender` "A really l..."
@@ -104,7 +104,14 @@ spec = hspec $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
        fills [("desc", useAttrs ((a"length" %
                                   a"text")
-                                 (\n d -> return $ T.take n d <> "...")))],
+                                 (\n d _t -> return $ T.take n d <> "...")))],
+        mempty) `shouldRender` "A really l..."
+
+    it "should allow you use child elements" $ do
+      ("<desc length=\"10\">A <adverb /> long description</desc>",
+       fills [ ("adverb", text "really")
+             , ("desc", useAttrs ((a"length")
+                                  (\n t -> return $ T.take n t <> "...")))],
         mempty) `shouldRender` "A really l..."
 
   describe "attributes" $ do

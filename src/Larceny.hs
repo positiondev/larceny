@@ -38,8 +38,10 @@ add mouter tpl =
 text :: Text -> Fill
 text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> IO Text) -> Fill
-useAttrs f = \m _t _l -> f m
+useAttrs :: (AttrArgs -> Text -> IO Text) -> Fill
+useAttrs f = \atrs tpl lib ->
+  do childText <- runTemplate tpl mempty lib
+     f atrs childText
 
 class FromAttr a where
   readAttr :: Text -> AttrArgs -> a
@@ -59,9 +61,7 @@ a attrName k attrs = k (readAttr attrName attrs)
 
 mapFills :: (a -> BlankFills) -> [a] -> Fill
 mapFills f xs = \_m tpl lib ->
-  T.concat <$>
-           mapM (\n ->
-                 runTemplate tpl (f n) lib) xs
+    T.concat <$>  mapM (\n -> runTemplate tpl (f n) lib) xs
 
 fills :: [(Text, Fill)] -> BlankFills
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
@@ -80,7 +80,8 @@ parse t =
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
            in Template $ \m l ->
-                need m (map Blank unbound) <$> (T.concat <$> process m l unbound nodes)
+                need m (map Blank unbound) <$>
+                (T.concat <$> process m l unbound nodes)
 
 fillIn :: Text -> BlankFills -> Fill
 fillIn tn m = m M.! Blank tn
