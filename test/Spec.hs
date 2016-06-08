@@ -38,6 +38,11 @@ shouldRender (t', s, l) output = do
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
+shouldRenderContaining :: (Text, BlankFills, Library) -> Text -> Expectation
+shouldRenderContaining (t, s, l) excerpt = do
+  rendered <- runTemplate (parse t) s l
+  (excerpt `T.isInfixOf` rendered) `shouldBe` True
+
 spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
@@ -127,5 +132,9 @@ spec = hspec $ do
   describe "findUnboundAttrs" $ do
     it "should find stuff matching the pattern ${blah}" $ do
       findUnboundAttrs [("foo", "${blah}")] `shouldBe` ["blah"]
+
+  describe "a large HTML file" $ do
+    it "should render large HTML files" $ do
+      (tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

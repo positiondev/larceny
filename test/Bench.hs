@@ -29,7 +29,7 @@ main =
                          , bench "applyTemplate" $ nfIO $ runTpl tpl3
                          , bench "mapFills" $ nfIO $ runTpl tpl4
                          , bench "funFill" $ nfIO $ runTpl tpl5
-                         , bench "lots of html" $ nfIO $ runTpl tpl6]
+                         , bench "lots of html" $ nfIO $ runBigTpl tpl6]
     , bgroup "interpreted heist" [
          bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
        , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
@@ -40,6 +40,9 @@ main =
 
 runTpl :: Text -> IO Text
 runTpl x = runTemplate (parse x) subst tplLib
+
+runBigTpl :: Text -> IO Text
+runBigTpl x = runTemplate (parse x) subst positionTplLib
 
 splicesI :: MonadIO m => Splices (HI.Splice m)
 splicesI = do "site-title" ## siteTitleSpliceI

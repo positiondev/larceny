@@ -58,21 +58,7 @@ tpl6 = "<!doctype html>\n\
         \\n\
         \  <body>\n\
         \\n\
-        \    <div class=\"container\">\n\
-        \      <div class=\"row\">\n\
-        \        <div class=\"five columns\">\n\
-        \          <h1><a href=\"/\">position development</a></h1>\n\
-        \        </div>\n\
-        \        <div class=\"three columns\">\n\
-        \          &nbsp;\n\
-        \        </div>\n\
-        \        <div class=\"four columns\">\n\
-        \          <p class=\"tagline\">Want to hire us? <a href=\"/cdn-cgi/l/email-protection#94e3fbe6fff1e6e7d4e4fbe7fde0fdfbfaf0f1e2baf7fbf9\"><strong><span class=\"__cf_email__\" data-cfemail=\"ed9a829f86889f9ead9d829e849984828389889bc38e8280\">[email&#160;protected]</span><script data-cfhash='f9e31' type=\"text/javascript\">/* <![CDATA[ */!function(t,e,r,n,c,a,p){try{t=document.currentScript||function(){for(t=document.getElementsByTagName('script'),e=t.length;e--;)if(t[e].getAttribute('data-cfhash'))return t[e]}();if(t&&(c=t.previousSibling)){p=t.parentNode;if(a=c.getAttribute('data-cfemail')){for(e='',r='0x'+a.substr(0,2)|0,n=2;a.length-n;n+=2)e+='%'+('0'+('0x'+a.substr(n,2)^r).toString(16)).slice(-2);p.replaceChild(document.createTextNode(decodeURIComponent(e)),c)}p.removeChild(t)}}catch(u){}}()/* ]]> */</script></strong></a></p>\n\
-        \\n\
-        \          <p>Want to <a href=\"/work.html\"><strong>join us</strong></a>?</p>\n\
-        \        </div>\n\
-        \      </div> <!-- .row -->\n\
-        \    </div> <!-- .container -->\n\
+        \    <apply template=\"header\" /> \
         \\n\
         \    <hr/>\n\
         \\n\
@@ -94,78 +80,7 @@ tpl6 = "<!doctype html>\n\
         \        </div>\n\
         \      </div> <!-- .section -->\n\
         \\n\
-        \      <div class=\"row section\">\n\
-        \        <div class=\"three columns\">\n\
-        \          <h3>Our Clients</h3>\n\
-        \        </div>\n\
-        \        <div class=\"nine columns clients\">\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"https://www.versobooks.com\" target=\"_blank\">\n\
-        \                <img title=\"Verso Books\" src=\"img/logo_verso.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"https://www.versobooks.com\" target=\"_blank\">\n\
-        \              Verso Books\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"https://www.jacobinmag.com\" target=\"_blank\">\n\
-        \                <img title=\"Jacobin Magazine\" src=\"img/logo_jacobin.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"https://www.jacobinmag.com\" target=\"_blank\">\n\
-        \              Jacobin Magazine\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"http://www.thenewinquiry.com\" target=\"_blank\">\n\
-        \                <img title=\"The New Inquiry\" src=\"img/logo_NI.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"http://www.thenewinquiry.com\" target=\"_blank\">\n\
-        \              The New Inquiry\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"https://www.haymarketbooks.org\" target=\"_blank\">\n\
-        \                <img title=\"Haymarket Books\" src=\"img/logo_haymarket.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"https://www.haymarketbooks.org\" target=\"_blank\">\n\
-        \              Haymarket Books\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"http://www.sevenstories.com\" target=\"_blank\">\n\
-        \                <img title=\"Seven Stories Press\" src=\"img/logo_ssp.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"http://www.sevenstories.com\" target=\"_blank\">\n\
-        \              Seven Stories Press\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \\n\
-        \          <div class=\"client\">\n\
-        \            <div class=\"logo\">\n\
-        \              <a href=\"http://calculator.realfoodchallenge.org\" target=\"_blank\">\n\
-        \                <img title=\"Real Food Challenge\" src=\"img/logo_realfood.gif\"/>\n\
-        \              </a>\n\
-        \            </div>\n\
-        \            <a href=\"http://calculator.realfoodchallenge.org\" target=\"_blank\">\n\
-        \              Real Food Challenge\n\
-        \            </a>\n\
-        \          </div> <!-- .client -->\n\
-        \        </div>\n\
-        \      </div> <!-- .section -->\n\
+        \      <apply template=\"clients\" /> \
         \\n\
         \      <div class=\"row section\">\n\
         \        <div class=\"three columns\">\n\
@@ -242,15 +157,7 @@ tpl6 = "<!doctype html>\n\
         \\n\
         \    <hr/>\n\
         \\n\
-        \    <div class=\"container footer\">\n\
-        \      <div class=\"row\">\n\
-        \        <div class=\"twelve columns\">\n\
-        \          <a href=\"/index.html\">Home</a> | \n\
-        \          <a href=\"/work.html\">Jobs</a> &mdash; \n\
-        \          &copy; 2016 Position Development, LLC. \n\
-        \        </div>\n\
-        \      </div> <!-- .row -->\n\
-        \    </div> <!-- .container -->\n\
+        \    <apply template=\"footer\" />\
         \\n\
         \    <script>\n\
         \      (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){\n\
@@ -278,7 +185,89 @@ subst = fills [ ("site-title", text "Gotham Girls roster")
                           , ("V-Diva", "jammer") ] )
             , ("desc", useAttrs ((a"length" %
                                  a"text")
-                                (\n d _t -> return $ T.take n d <> "...")))]
+                                (\n d _t -> return $ T.take n d <> "...")))
+            , ("clients", clientFills) ]
 
 tplLib :: Library
 tplLib = M.fromList [("skater", (parse "Beyonslay") )]
+
+data Client = Client { clientName :: Text
+                     , clientUrl  :: Text
+                     , clientLogo :: Text } deriving (Eq, Show)
+
+clientFills = mapFills (\(Client name url logo) ->
+                          fills [ ("client-name", text name)
+                                , ("client-url", text url)
+                                , ("client-logo", text logo)]) clients
+
+clients = [Client "Seven Stories Press"
+                  "http://www.sevenstories.com"
+                  "img/logo_ssp.gif",
+           Client "Real Food Challenge"
+                  "http://calculator.realfoodchallenge.org"
+                  "img/logo_realfood.gif",
+           Client "Haymarket Books"
+                  "http://www.haymarketbooks.org"
+                  "img/logo_haymarket.gif",
+           Client "Verso Books"
+                  "http://www.versobooks.com"
+                  "img/logo_verso.gif",
+           Client "Jacobin Magazine"
+                  "http://www.jacobinmag.com"
+                  "img/logo_jacobin.gif"]
+
+clientsTpl =
+        "      <div class=\"row section\">\n\
+        \        <div class=\"three columns\">\n\
+        \          <h3>Our Clients</h3>\n\
+        \        </div>\n\
+        \        <div class=\"nine columns clients\">\n\
+        \          <clients> \
+        \<div class=\"client\">\n\
+                   \  <div class=\"logo\">\n\
+                   \    <a href=\"${client-url}\" target=\"_blank\">\n\
+                   \      <img title=\"${client-name\" \
+                   \           src=\"${client-logo}\"/>\n\
+                   \    </a>\n\
+                   \  </div>\n\
+                   \  <a href=\"${client-url}\" target=\"_blank\">\n\
+                   \    <client-name />\n\
+                   \  </a>\n\
+                   \</div> <!-- .client -->\n\
+        \          </clients> \
+        \        </div>\n\
+        \      </div> <!-- .section -->\n"
+
+headerTpl =
+        "  <div class=\"container\">\n\
+        \      <div class=\"row\">\n\
+        \        <div class=\"five columns\">\n\
+        \          <h1><a href=\"/\">position development</a></h1>\n\
+        \        </div>\n\
+        \        <div class=\"three columns\">\n\
+        \          &nbsp;\n\
+        \        </div>\n\
+        \        <div class=\"four columns\">\n\
+        \          <p class=\"tagline\">Want to hire us? <a href=\"/cdn-cgi/l/email-protection#94e3fbe6fff1e6e7d4e4fbe7fde0fdfbfaf0f1e2baf7fbf9\"><strong><span class=\"__cf_email__\" data-cfemail=\"ed9a829f86889f9ead9d829e849984828389889bc38e8280\">[email&#160;protected]</span><script data-cfhash='f9e31' type=\"text/javascript\">/* <![CDATA[ */!function(t,e,r,n,c,a,p){try{t=document.currentScript||function(){for(t=document.getElementsByTagName('script'),e=t.length;e--;)if(t[e].getAttribute('data-cfhash'))return t[e]}();if(t&&(c=t.previousSibling)){p=t.parentNode;if(a=c.getAttribute('data-cfemail')){for(e='',r='0x'+a.substr(0,2)|0,n=2;a.length-n;n+=2)e+='%'+('0'+('0x'+a.substr(n,2)^r).toString(16)).slice(-2);p.replaceChild(document.createTextNode(decodeURIComponent(e)),c)}p.removeChild(t)}}catch(u){}}()/* ]]> */</script></strong></a></p>\n\
+        \\n\
+        \          <p>Want to <a href=\"/work.html\"><strong>join us</strong></a>?</p>\n\
+        \        </div>\n\
+        \      </div> <!-- .row -->\n\
+        \    </div> <!-- .container -->\n"
+
+footerTpl =
+        "    <div class=\"container footer\">\n\
+        \      <div class=\"row\">\n\
+        \        <div class=\"twelve columns\">\n\
+        \          <a href=\"/index.html\">Home</a> | \n\
+        \          <a href=\"/work.html\">Jobs</a> &mdash; \n\
+        \          &copy; 2016 Position Development, LLC. \n\
+        \        </div>\n\
+        \      </div> <!-- .row -->\n\
+        \    </div> <!-- .container -->\n"
+
+positionTplLib :: Library
+positionTplLib = M.fromList
+  [ ("header", parse headerTpl)
+  , ("clients", parse clientsTpl)
+  , ("footer", parse footerTpl) ]
