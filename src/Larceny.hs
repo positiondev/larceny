@@ -20,9 +20,9 @@ import qualified Text.XML           as X
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
 type Fill = AttrArgs -> (Path, Template) -> Library -> IO Text
-type BlankFills = Map Blank Fill
+type Substitutions = Map Blank Fill
 type Path = [Text]
-newtype Template = Template { runTemplate :: Path -> BlankFills -> Library -> IO Text }
+newtype Template = Template { runTemplate :: Path -> Substitutions -> Library -> IO Text }
 type Library = Map Path Template
 
 need :: Map Blank Fill -> [Blank] -> Text -> Text
@@ -34,7 +34,7 @@ need m keys rest =
         then rest
         else error $ "Missing keys: " <> show d
 
-add :: BlankFills -> Template -> Template
+add :: Substitutions -> Template -> Template
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
@@ -62,14 +62,14 @@ a attrName k attrs = k (readAttr attrName attrs)
     ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
-mapFills :: (a -> BlankFills) -> [a] -> Fill
+mapFills :: (a -> Substitutions) -> [a] -> Fill
 mapFills f xs = \_m (pth, tpl) lib ->
     T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
-fills :: [(Text, Fill)] -> BlankFills
+fills :: [(Text, Fill)] -> Substitutions
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
-fill :: BlankFills -> Fill
+fill :: Substitutions -> Fill
 fill m = \_m (pth, Template tpl) l -> tpl pth m l
 
 plainNodes :: HS.HashSet Text
@@ -85,10 +85,10 @@ mk nodes = let unbound = findUnbound nodes
                 need m (map Blank unbound) <$>
                 (T.concat <$> process pth m l unbound nodes)
 
-fillIn :: Text -> BlankFills -> Fill
+fillIn :: Text -> Substitutions -> Fill
 fillIn tn m = m M.! Blank tn
 
-process :: Path -> BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
+process :: Path -> Substitutions -> Library -> [Text] -> [X.Node] -> IO [Text]
 process _ _ _ _ [] = return []
 process pth m l unbound (n:ns) = do
   processedNode <-
@@ -104,7 +104,7 @@ process pth m l unbound (n:ns) = do
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: Path -> BlankFills -> Library -> [Text] ->
+processPlain :: Path -> Substitutions -> Library -> [Text] ->
                  X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
 processPlain pth m l unbound tn atr kids = do
   atrs <- attrsToText atr
@@ -125,7 +125,7 @@ processPlain pth m l unbound tn atr kids = do
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: Path -> BlankFills -> Library ->
+processFancy :: Path -> Substitutions -> Library ->
                 X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
 processFancy pth m l tn atr kids =
   let tagName = X.nameLocalName tn in
@@ -135,7 +135,7 @@ processFancy pth m l tn atr kids =
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
-processApply :: Path -> BlankFills -> Library ->
+processApply :: Path -> Substitutions -> Library ->
                  Map X.Name Text -> [X.Node] -> IO [Text]
 processApply pth m l atr kids = do
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")

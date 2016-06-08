@@ -173,7 +173,7 @@ tpl6 = "<!doctype html>\n\
         \\n\
         \</html>"
 
-subst :: BlankFills
+subst :: Substitutions
 subst = fills [ ("site-title", text "Gotham Girls roster")
             , ("name", text "Gotham Girls roster")
             , ("skater", fill $ fills [("name", text "Amy Roundhouse")])

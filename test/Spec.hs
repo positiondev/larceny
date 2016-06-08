@@ -31,19 +31,19 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-shouldRender :: ([Text], Text, BlankFills, Library) -> Text -> Expectation
+shouldRender :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
   rendered <- runTemplate (parse t') pth s l
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
-shouldRenderDef :: (Text, BlankFills, Library) -> Text -> Expectation
+shouldRenderDef :: (Text, Substitutions, Library) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
     rendered <- runTemplate (parse t') ["default"] s l
     T.replace " " "" rendered `shouldBe`
       T.replace " " "" output
 
-shouldRenderContaining :: ([Text], Text, BlankFills, Library) -> Text -> Expectation
+shouldRenderContaining :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
   rendered <- runTemplate (parse t) pth s l
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
