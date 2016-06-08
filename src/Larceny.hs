@@ -7,7 +7,7 @@ import           Data.Hashable      (Hashable)
 import qualified Data.HashSet       as HS
 import           Data.Map           (Map)
 import qualified Data.Map           as M
-import           Data.Maybe         (fromMaybe, mapMaybe)
+import           Data.Maybe         (fromMaybe, isJust, mapMaybe)
 import           Data.Monoid        ((<>))
 import qualified Data.Set           as S
 import           Data.Text          (Text)
@@ -19,10 +19,11 @@ import qualified Text.XML           as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
-type Fill = AttrArgs -> Template -> Library -> IO Text
+type Fill = AttrArgs -> (Path, Template) -> Library -> IO Text
 type BlankFills = Map Blank Fill
-newtype Template = Template { runTemplate :: BlankFills -> Library -> IO Text }
-type Library = Map [Text] Template
+type Path = [Text]
+newtype Template = Template { runTemplate :: Path -> BlankFills -> Library -> IO Text }
+type Library = Map Path Template
 
 need :: Map Blank Fill -> [Blank] -> Text -> Text
 need m keys rest =
@@ -35,14 +36,14 @@ need m keys rest =
 
 add :: BlankFills -> Template -> Template
 add mouter tpl =
-  Template (\minner l -> runTemplate tpl (minner `M.union` mouter) l)
+  Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
 text :: Text -> Fill
 text t = \_m _t _l -> return t
 
 useAttrs :: (AttrArgs -> Text -> IO Text) -> Fill
-useAttrs f = \atrs tpl lib ->
-  do childText <- runTemplate tpl mempty lib
+useAttrs f = \atrs (pth, tpl) lib ->
+  do childText <- runTemplate tpl pth mempty lib
      f atrs childText
 
 class FromAttr a where
@@ -62,14 +63,14 @@ a attrName k attrs = k (readAttr attrName attrs)
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
 mapFills :: (a -> BlankFills) -> [a] -> Fill
-mapFills f xs = \_m tpl lib ->
-    T.concat <$>  mapM (\n -> runTemplate tpl (f n) lib) xs
+mapFills f xs = \_m (pth, tpl) lib ->
+    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
 fills :: [(Text, Fill)] -> BlankFills
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
 fill :: BlankFills -> Fill
-fill m = \_m (Template tpl) l -> tpl m l
+fill m = \_m (pth, Template tpl) l -> tpl pth m l
 
 plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
@@ -80,73 +81,77 @@ parse t =
 
 mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
-           in Template $ \m l ->
+           in Template $ \pth m l ->
                 need m (map Blank unbound) <$>
-                (T.concat <$> process m l unbound nodes)
+                (T.concat <$> process pth m l unbound nodes)
 
 fillIn :: Text -> BlankFills -> Fill
 fillIn tn m = m M.! Blank tn
 
-process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
-process _ _ _ [] = return []
-process m l unbound (n:ns) = do
+process :: Path -> BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
+process _ _ _ _ [] = return []
+process pth m l unbound (n:ns) = do
   processedNode <-
     case n of
-      X.NodeElement (X.Element "apply" atr kids) -> processApply m l atr kids
+      X.NodeElement (X.Element "apply" atr kids) -> processApply pth m l atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) plainNodes
-                                 -> processPlain m l unbound tn atr kids
-      X.NodeElement (X.Element tn atr kids)     -> processFancy m l tn atr kids
+                                 -> processPlain pth m l unbound tn atr kids
+      X.NodeElement (X.Element tn atr kids)     -> processFancy pth m l tn atr kids
       X.NodeContent t               -> return [t]
       X.NodeComment c                -> return ["<!--" <> c <> "-->"]
-  restOfNodes <- process m l unbound ns
+  restOfNodes <- process pth m l unbound ns
   return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: BlankFills -> Library -> [Text] ->
+processPlain :: Path -> BlankFills -> Library -> [Text] ->
                  X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
-processPlain m l unbound tn atr kids = do
+processPlain pth m l unbound tn atr kids = do
   atrs <- attrsToText atr
-  processed <- process m l unbound kids
+  processed <- process pth m l unbound kids
   let tagName = X.nameLocalName tn
   return $ ["<" <> tagName <> atrs <> ">"]
            ++ processed
            ++ ["</" <> tagName <> ">"]
-  where attrsToText attrs = T.concat <$> mapM (attrToText) (M.toList attrs)
+  where attrsToText attrs = T.concat <$> mapM attrToText (M.toList attrs)
         attrToText :: (X.Name, Text) -> IO Text
         attrToText (k,v) =
           let name = X.nameLocalName k in
           case mUnboundAttr (k,v) of
-            Just hole -> do filledIn <- fillIn hole m mempty (mk []) l
+            Just hole -> do filledIn <- fillIn hole m mempty ([], mk []) l
                             return $ " " <> name <> "=\"" <> filledIn  <> "\""
             Nothing   -> return $ " " <> name <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: BlankFills -> Library ->
+processFancy :: Path -> BlankFills -> Library ->
                 X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
-processFancy m l tn atr kids =
+processFancy pth m l tn atr kids =
   let tagName = X.nameLocalName tn in
-  sequence [ fillIn tagName m (M.mapKeys X.nameLocalName atr) (add m (mk kids)) l]
+  sequence [ fillIn tagName m (M.mapKeys X.nameLocalName atr) (pth, add m (mk kids)) l]
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
-processApply :: BlankFills -> Library ->
+processApply :: Path -> BlankFills -> Library ->
                  Map X.Name Text -> [X.Node] -> IO [Text]
-processApply m l atr kids = do
-  let tplName = fromMaybe
-                (error "No template name given.")
-                (M.lookup "template" atr)
-  let tplToApply = case M.lookup [tplName] l of
-                     Nothing -> error $ "Couldn't find " <> T.unpack tplName <> " in " <> show (M.keys l)
-                     Just tpl -> tpl
-  contentTpl <- runTemplate (mk kids) m l
+processApply pth m l atr kids = do
+  let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
+                                          (M.lookup "template" atr)
+  let (absolutePath, tplToApply) = case findTemplate (init pth) l tplPath of
+                                    (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " in " <> show (M.keys l)
+                                    (targetPath, Just tpl) -> (targetPath, tpl)
+  contentTpl <- runTemplate (mk kids) pth m l
   let contentSub = fills [("apply-content",
                         text contentTpl)]
-  sequence [ runTemplate tplToApply (contentSub `M.union` m) l ]
+  sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+  where findTemplate [] l targetPath = (targetPath, M.lookup targetPath l)
+        findTemplate pth' l targetPath =
+          case M.lookup (pth' ++ targetPath) l of
+            Just tpl -> (pth' ++ targetPath, Just tpl)
+            Nothing -> findTemplate (init pth') l targetPath
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []

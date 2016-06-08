@@ -31,53 +31,84 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-shouldRender :: (Text, BlankFills, Library) -> Text -> Expectation
-shouldRender (t', s, l) output = do
-  rendered <- runTemplate (parse t') s l
+shouldRender :: ([Text], Text, BlankFills, Library) -> Text -> Expectation
+shouldRender (pth, t', s, l) output = do
+  rendered <- runTemplate (parse t') pth s l
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
-shouldRenderContaining :: (Text, BlankFills, Library) -> Text -> Expectation
-shouldRenderContaining (t, s, l) excerpt = do
-  rendered <- runTemplate (parse t) s l
+shouldRenderDef :: (Text, BlankFills, Library) -> Text -> Expectation
+shouldRenderDef (t', s, l) output = do
+    rendered <- runTemplate (parse t') ["default"] s l
+    T.replace " " "" rendered `shouldBe`
+      T.replace " " "" output
+
+shouldRenderContaining :: ([Text], Text, BlankFills, Library) -> Text -> Expectation
+shouldRenderContaining (pth, t, s, l) excerpt = do
+  rendered <- runTemplate (parse t) pth s l
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 spec :: IO ()
 spec = hspec $ do
   describe "parse" $ do
     it "should parse HTML into a Template" $ do
-      (tpl4, subst, mempty) `shouldRender` tpl4Output
+      (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
     it "should allow attributes" $ do
-      ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRender` "<p id=\"hello\">hello</p>"
+      ("<p id=\"hello\">hello</p>", mempty, mempty) `shouldRenderDef` "<p id=\"hello\">hello</p>"
 
   describe "add" $ do
     it "should allow overriden tags" $ do
-      ("<name /><skater><name /></skater>", subst, mempty) `shouldRender` "Gotham Girls roster Amy Roundhouse"
+      ("<name /><skater><name /></skater>", subst, mempty) `shouldRenderDef` "Gotham Girls roster Amy Roundhouse"
 
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"hello\" />",
        mempty,
-       M.fromList [(["hello"], parse "hello")]) `shouldRender` "hello"
+       M.fromList [(["hello"], parse "hello")]) `shouldRenderDef` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
       ("<apply template=\"skater\" />",
        fills [("alias", text "Fifi Nomenom")],
-       M.fromList [(["skater"], parse "<alias />")]) `shouldRender` "Fifi Nomenom"
+       M.fromList [(["skater"], parse "<alias />")]) `shouldRenderDef` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"skater\">V-Diva</apply>",
        mempty,
-       M.fromList [(["skater"], parse "<apply-content />")]) `shouldRender` "V-Diva"
+       M.fromList [(["skater"], parse "<apply-content />")]) `shouldRenderDef` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply template=\"_base\"><p>The Smacktivist</p></apply>",
        fills [("siteTitle", text "Ohio Roller Girls")],
        M.fromList [(["_base"], parse "<h1><siteTitle /></h1>\
                                             \<apply-content />")])
-        `shouldRender` "<h1>Ohio Roller Girls</h1>\
+        `shouldRenderDef` "<h1>Ohio Roller Girls</h1>\
                        \<p>The Smacktivist</p>"
+    it "should look higher in tree for matching template" $
+       (["foo","bar"], "<apply template=\"base\" />",
+        mempty,
+        M.fromList [(["base"], parse "hello")]) `shouldRender` "hello"
+    it "should look first look in same directory for matching template" $
+       (["foo","bar"], "<apply template=\"base\" />",
+        mempty,
+        M.fromList [(["base"], parse "hello")
+                   ,(["foo", "base"], parse "goodbye")]) `shouldRender` "goodbye"
+    it "should traverse down via slashes" $
+       (["default"], "<apply template=\"foo/base\" />",
+        mempty,
+        M.fromList [(["base"], parse "hello")
+                   ,(["foo", "base"], parse "goodbye")]) `shouldRender` "goodbye"
+    it "should use the path to the applied template when looking" $
+         (["default"], "<apply template=\"foo/bar/baz\" />",
+          mempty,
+          M.fromList [(["base"], parse "hello")
+                     ,(["foo", "bar", "base"], parse "goodbye")
+                     ,(["foo", "bar", "baz"], parse "<apply template=\"base\"/>")]) `shouldRender` "goodbye"
+    it "should use the path to the applied template when looking" $
+         (["default", "hello"], "<apply template=\"foo/bar/baz\"><apply template=\"x\"/></apply>",
+          mempty,
+          M.fromList [(["default", "x"], parse "hello")
+                     ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
 
   describe "mapFills" $ do
     it "should map the fills over a list" $ do
-      (tpl4, subst, mempty) `shouldRender` tpl4Output
+      (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
 
   describe "writing functions" $ do
     it "should allow you to write functions for fills" $ do
@@ -85,7 +116,7 @@ spec = hspec $ do
        fills [("desc", \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
                                "A really long description"
                                <> "...")],
-        mempty) `shouldRender` "A really l..."
+        mempty) `shouldRenderDef` "A really l..."
 
 
     it "should allow you to use IO in fills" $ do
@@ -94,7 +125,7 @@ spec = hspec $ do
                                       return $ T.take (read $ T.unpack (m M.! "length"))
                                                "A really long description"
                                                <> "...")],
-        mempty) `shouldRender` "A really l..."
+        mempty) `shouldRenderDef` "A really l..."
 
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
@@ -102,30 +133,30 @@ spec = hspec $ do
        fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
                                             "A really long description"
                                             <> "...")))],
-        mempty) `shouldRender` "A really l..."
+        mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
        fills [("desc", useAttrs ((a"length" %
                                   a"text")
                                  (\n d _t -> return $ T.take n d <> "...")))],
-        mempty) `shouldRender` "A really l..."
+        mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use child elements" $ do
       ("<desc length=\"10\">A <adverb /> long description</desc>",
        fills [ ("adverb", text "really")
              , ("desc", useAttrs ((a"length")
                                   (\n t -> return $ T.take n t <> "...")))],
-        mempty) `shouldRender` "A really l..."
+        mempty) `shouldRenderDef` "A really l..."
 
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
       ("<p id=\"${skater}\"><skater /></p>",
        fills [("skater", text "Beyonslay")],
-       mempty) `shouldRender` "<p id=\"Beyonslay\">Beyonslay</p>"
+       mempty) `shouldRenderDef` "<p id=\"Beyonslay\">Beyonslay</p>"
 
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
-      (tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
+      (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
