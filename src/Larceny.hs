@@ -1,7 +1,10 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE OverloadedStrings          #-}
 
 module Larceny where
 
+import           Data.Hashable      (Hashable)
+import qualified Data.HashSet       as HS
 import           Data.Map           (Map)
 import qualified Data.Map           as M
 import           Data.Maybe         (fromMaybe, mapMaybe)
@@ -12,7 +15,7 @@ import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 import qualified Text.XmlHtml       as X
 
-newtype Blank = Blank Text deriving (Eq, Show, Ord)
+newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
 type Fill = AttrArgs -> Template -> Library -> IO Text
 type BlankFills = Map Blank Fill
@@ -66,23 +69,8 @@ fills = M.fromList . map (\(x,y) -> (Blank x, y))
 fill :: BlankFills -> Fill
 fill m = \_m (Template tpl) l -> tpl m l
 
-plainNodes :: [Text]
-plainNodes = ["!DOCTYPE", "a", "abbr", "address", "area", "article", "aside",
-              "audio", "b", "base", "bdi", "bdo", "blockquote", "body", "br",
-              "button", "canvas", "caption", "cite", "code", "col",
-              "colgroup", "command", "datalist", "dd", "del", "details",
-              "dfn", "div", "dl", "dt", "em", "embed", "fieldset",
-              "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
-              "h4", "h5", "h6", "head", "header", "hgroup", "hr", "html", "i",
-              "iframe", "img", "input", "ins", "kbd", "keygen", "label",
-              "legend", "li", "link", "map", "mark", "menu", "meta", "meter",
-              "nav", "noscript", "object", "ol", "optgroup", "option",
-              "output", "p", "param", "pre", "progress", "q", "rp", "rt",
-              "ruby", "s", "samp", "script", "section", "select", "small",
-              "source", "span", "strong", "style", "sub", "summary", "sup",
-              "table", "tbody", "td", "textarea", "tfoot", "th", "thead",
-              "time", "title", "tr", "track", "u", "ul", "var", "video",
-              "wbr"]
+plainNodes :: HS.HashSet Text
+plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
 parse :: Text -> Template
 parse t =
@@ -107,7 +95,7 @@ process m l unbound (n:ns)= do
   processedNode <-
     case n of
       X.Element "apply" atr kids -> processApply m l atr kids
-      X.Element tn atr kids | tn `elem` plainNodes
+      X.Element tn atr kids | HS.member  tn plainNodes
                                  -> processPlain m l unbound tn atr kids
       X.Element tn atr kids      -> processFancy m l tn atr kids
       X.TextNode t               -> return [t]
@@ -160,7 +148,7 @@ processApply m l atr kids = do
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
 findUnbound (X.Element tn atr kids:ns) =
-     if tn `elem` ("apply":"bind":plainNodes)
+     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
      then findUnboundAttrs atr ++ findUnbound kids
      else tn : findUnboundAttrs atr
    ++ findUnbound ns

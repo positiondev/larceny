@@ -24,11 +24,12 @@ import           Larceny
 main :: IO ()
 main =
   defaultMainWith (defaultConfig {reportFile = Just "report.html"}) [
-      bgroup "runTemplate" [ bench "no blanks" $ nf runTpl tpl1
-                         , bench "simple blank" $ nf runTpl tpl2
-                         , bench "applyTemplate" $ nf runTpl tpl3
-                         , bench "mapFills" $ nf runTpl tpl4
-                         , bench "funFill" $ nf runTpl tpl5]
+      bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
+                         , bench "simple blank" $ nfIO $ runTpl tpl2
+                         , bench "applyTemplate" $ nfIO $ runTpl tpl3
+                         , bench "mapFills" $ nfIO $ runTpl tpl4
+                         , bench "funFill" $ nfIO $ runTpl tpl5
+                         , bench "lots of html" $ nfIO $ runTpl tpl6]
     , bgroup "interpreted heist" [
          bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
        , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
@@ -37,7 +38,7 @@ main =
       -- still need compiled Heist
     ]
 
-runTpl :: Text -> Text
+runTpl :: Text -> IO Text
 runTpl x = runTemplate (parse x) subst tplLib
 
 splicesI :: MonadIO m => Splices (HI.Splice m)
