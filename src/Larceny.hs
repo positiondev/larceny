@@ -15,8 +15,7 @@ import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy     as LT
 import qualified Text.HTML.DOM      as D
-import qualified Text.XML           as XML
-import qualified Text.XmlHtml       as X
+import qualified Text.XML           as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
@@ -76,10 +75,10 @@ plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
 parse t =
-  let (XML.Document _ (XML.Element _ _ nodes) _) = D.parseLT (LT.fromStrict ("<div>" <> t <> "</div>"))
+  let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT (LT.fromStrict ("<div>" <> t <> "</div>"))
   in mk nodes
 
-mk :: [XML.Node] -> Template
+mk :: [X.Node] -> Template
 mk nodes = let unbound = findUnbound nodes
            in Template $ \m l ->
                 need m (map Blank unbound) <$>
@@ -88,35 +87,35 @@ mk nodes = let unbound = findUnbound nodes
 fillIn :: Text -> BlankFills -> Fill
 fillIn tn m = m M.! Blank tn
 
-process :: BlankFills -> Library -> [Text] -> [XML.Node] -> IO [Text]
+process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
 process _ _ _ [] = return []
 process m l unbound (n:ns) = do
   processedNode <-
     case n of
-      XML.NodeElement (XML.Element "apply" atr kids) -> processApply m l atr kids
-      XML.NodeElement (XML.Element tn atr kids) | HS.member (XML.nameLocalName tn) plainNodes
+      X.NodeElement (X.Element "apply" atr kids) -> processApply m l atr kids
+      X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) plainNodes
                                  -> processPlain m l unbound tn atr kids
-      XML.NodeElement (XML.Element tn atr kids)     -> processFancy m l tn atr kids
-      XML.NodeContent t               -> return [t]
-      XML.NodeComment c                -> return ["<!--" <> c <> "-->"]
+      X.NodeElement (X.Element tn atr kids)     -> processFancy m l tn atr kids
+      X.NodeContent t               -> return [t]
+      X.NodeComment c                -> return ["<!--" <> c <> "-->"]
   restOfNodes <- process m l unbound ns
   return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
 processPlain :: BlankFills -> Library -> [Text] ->
-                 XML.Name -> Map XML.Name Text -> [XML.Node] -> IO [Text]
+                 X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
 processPlain m l unbound tn atr kids = do
   atrs <- attrsToText atr
   processed <- process m l unbound kids
-  let tagName = XML.nameLocalName tn
+  let tagName = X.nameLocalName tn
   return $ ["<" <> tagName <> atrs <> ">"]
            ++ processed
            ++ ["</" <> tagName <> ">"]
   where attrsToText attrs = T.concat <$> mapM (attrToText) (M.toList attrs)
-        attrToText :: (XML.Name, Text) -> IO Text
+        attrToText :: (X.Name, Text) -> IO Text
         attrToText (k,v) =
-          let name = XML.nameLocalName k in
+          let name = X.nameLocalName k in
           case mUnboundAttr (k,v) of
             Just hole -> do filledIn <- fillIn hole m mempty (mk []) l
                             return $ " " <> name <> "=\"" <> filledIn  <> "\""
@@ -126,17 +125,17 @@ processPlain m l unbound tn atr kids = do
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
 processFancy :: BlankFills -> Library ->
-                XML.Name -> Map XML.Name Text -> [XML.Node] -> IO [Text]
+                X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
 processFancy m l tn atr kids =
-  let tagName = XML.nameLocalName tn in
-  sequence [ fillIn tagName m (M.mapKeys XML.nameLocalName atr) (add m (mk kids)) l]
+  let tagName = X.nameLocalName tn in
+  sequence [ fillIn tagName m (M.mapKeys X.nameLocalName atr) (add m (mk kids)) l]
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
 processApply :: BlankFills -> Library ->
-                 Map XML.Name Text -> [XML.Node] -> IO [Text]
+                 Map X.Name Text -> [X.Node] -> IO [Text]
 processApply m l atr kids = do
   let tplName = fromMaybe
                 (error "No template name given.")
@@ -151,20 +150,20 @@ processApply m l atr kids = do
                         text contentTpl)]
   sequence [ runTemplate tplToApply (contentSub `M.union` m) l ]
 
-findUnbound :: [XML.Node] -> [Text]
+findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
-findUnbound (XML.NodeElement (XML.Element tn atr kids):ns) =
-     let tagName = XML.nameLocalName tn in
+findUnbound (X.NodeElement (X.Element tn atr kids):ns) =
+     let tagName = X.nameLocalName tn in
      if tn == "apply" || HS.member tagName plainNodes
      then findUnboundAttrs atr ++ findUnbound kids
      else tagName : findUnboundAttrs atr
    ++ findUnbound ns
 findUnbound (_:ns) = findUnbound ns
 
-findUnboundAttrs :: Map XML.Name Text -> [Text]
+findUnboundAttrs :: Map X.Name Text -> [Text]
 findUnboundAttrs atrs = mapMaybe mUnboundAttr (M.toList atrs)
 
-mUnboundAttr :: (XML.Name, Text) -> Maybe Text
+mUnboundAttr :: (X.Name, Text) -> Maybe Text
 mUnboundAttr (_, value) = do
   endVal <- T.stripPrefix "${" value
   T.stripSuffix "}" endVal

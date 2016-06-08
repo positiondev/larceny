@@ -1,13 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.Map     as M
-import           Data.Monoid  ((<>))
-import           Data.Text    (Text)
-import qualified Data.Text    as T
+import qualified Data.Map    as M
+import           Data.Monoid ((<>))
+import           Data.Text   (Text)
+import qualified Data.Text   as T
 import           Examples
 import           Larceny
 import           Test.Hspec
-import qualified Text.XmlHtml as X
 
 main :: IO ()
 main = spec
@@ -124,14 +123,6 @@ spec = hspec $ do
       ("<p id=\"${skater}\"><skater /></p>",
        fills [("skater", text "Beyonslay")],
        mempty) `shouldRender` "<p id=\"Beyonslay\">Beyonslay</p>"
-
-  describe "findUnbound" $ do
-    it "should find stuff matching the pattern ${blah}" $ do
-      findUnbound [X.Element "p" [("foo", "${blah}")] []] `shouldBe` ["blah"]
-
-  describe "findUnboundAttrs" $ do
-    it "should find stuff matching the pattern ${blah}" $ do
-      findUnboundAttrs [("foo", "${blah}")] `shouldBe` ["blah"]
 
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
