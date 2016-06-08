@@ -101,7 +101,7 @@ fillIn tn m = m M.! Blank tn
 process :: BlankFills -> Library -> [Text] -> [X.Node] -> IO [Text]
 process _ _ _ [] = return []
 process m l unbound (X.Element "bind" [("tag", tn)] kids:ns) =
-  let newFills = fills [(tn, \atrs t l -> runTemplate (mk kids) m l)] in
+  let newFills = fills [(tn, \_a _t _l -> runTemplate (mk kids) m l)] in
   process (newFills `M.union` m) l unbound ns
 process m l unbound (n:ns)= do
   processedNode <-
@@ -114,10 +114,6 @@ process m l unbound (n:ns)= do
       X.Comment c                -> return ["<!--" <> c <> "-->"]
   restOfNodes <- process m l unbound ns
   return $ processedNode ++ restOfNodes
-
-addBind :: X.Node -> BlankFills -> BlankFills
-addBind (X.Element _ [("tag", tn)] kids) m =
-  fills [(tn, \atrs t l -> runTemplate (mk kids) m l)] `M.union` m
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
