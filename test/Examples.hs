@@ -189,7 +189,7 @@ subst = fills [ ("site-title", text "Gotham Girls roster")
             , ("clients", clientFills) ]
 
 tplLib :: Library
-tplLib = M.fromList [("skater", (parse "Beyonslay") )]
+tplLib = M.fromList [(["skater"], (parse "Beyonslay") )]
 
 data Client = Client { clientName :: Text
                      , clientUrl  :: Text
@@ -268,6 +268,6 @@ footerTpl =
 
 positionTplLib :: Library
 positionTplLib = M.fromList
-  [ ("header", parse headerTpl)
-  , ("clients", parse clientsTpl)
-  , ("footer", parse footerTpl) ]
+  [ (["header"], parse headerTpl)
+  , (["clients"], parse clientsTpl)
+  , (["footer"], parse footerTpl) ]

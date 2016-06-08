@@ -58,20 +58,20 @@ spec = hspec $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"hello\" />",
        mempty,
-       M.fromList [("hello", parse "hello")]) `shouldRender` "hello"
+       M.fromList [(["hello"], parse "hello")]) `shouldRender` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
       ("<apply template=\"skater\" />",
        fills [("alias", text "Fifi Nomenom")],
-       M.fromList [("skater", parse "<alias />")]) `shouldRender` "Fifi Nomenom"
+       M.fromList [(["skater"], parse "<alias />")]) `shouldRender` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"skater\">V-Diva</apply>",
        mempty,
-       M.fromList [("skater", parse "<apply-content />")]) `shouldRender` "V-Diva"
+       M.fromList [(["skater"], parse "<apply-content />")]) `shouldRender` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply template=\"_base\"><p>The Smacktivist</p></apply>",
        fills [("siteTitle", text "Ohio Roller Girls")],
-       M.fromList [("_base", parse "<h1><siteTitle /></h1>\
-                                   \<apply-content />")])
+       M.fromList [(["_base"], parse "<h1><siteTitle /></h1>\
+                                            \<apply-content />")])
         `shouldRender` "<h1>Ohio Roller Girls</h1>\
                        \<p>The Smacktivist</p>"
 
