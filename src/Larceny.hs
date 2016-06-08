@@ -3,7 +3,7 @@
 
 module Larceny where
 
-import           Control.Monad       (filterM, foldM)
+import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
 import           Data.Hashable       (Hashable)
 import qualified Data.HashSet        as HS

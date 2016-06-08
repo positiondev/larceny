@@ -165,7 +165,7 @@ spec = hspec $ do
   describe "statefulness" $ do
     it "a fill should be able to affect subsequent fills" $ do
        renderWith (M.fromList [(["default"], parse "<x/><x/>")])
-                  (fills [("x", \_ _ _ -> do modify (+1)
+                  (fills [("x", \_ _ _ -> do modify ((+1) :: Int -> Int)
                                              s <- get
                                              return (T.pack (show s)))])
                   0
