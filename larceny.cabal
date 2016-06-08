@@ -28,6 +28,8 @@ library
                      , hspec >=2.2 && <2.3
                      , html-conduit
                      , xml-conduit
+                     , directory
+                     , filepath
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -43,6 +45,8 @@ test-suite test
                      , hspec >=2.2 && <2.3
                      , larceny
                      , unordered-containers
+                     , directory
+                     , filepath
   hs-source-dirs:      test
   default-language:    Haskell2010
 
@@ -66,5 +70,7 @@ benchmark bench
                      , either
                      , bytestring
                      , mtl
+                     , directory
+                     , filepath
   hs-source-dirs:      test
   default-language:    Haskell2010

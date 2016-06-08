@@ -1,9 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.Map    as M
-import           Data.Monoid ((<>))
-import           Data.Text   (Text)
-import qualified Data.Text   as T
+import qualified Data.Map       as M
+import           Data.Monoid    ((<>))
+import           Data.Text      (Text)
+import qualified Data.Text      as T
+import qualified Data.Text.Lazy as LT
 import           Examples
 import           Larceny
 import           Test.Hspec
@@ -33,19 +34,19 @@ tpl4Output = "\
 
 shouldRender :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- runTemplate (parse t') pth s l
+  rendered <- runTemplate (parse (LT.fromStrict t')) pth s l
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
 shouldRenderDef :: (Text, Substitutions, Library) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- runTemplate (parse t') ["default"] s l
+    rendered <- runTemplate (parse (LT.fromStrict t')) ["default"] s l
     T.replace " " "" rendered `shouldBe`
       T.replace " " "" output
 
 shouldRenderContaining :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- runTemplate (parse t) pth s l
+  rendered <- runTemplate (parse (LT.fromStrict t)) pth s l
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 spec :: IO ()

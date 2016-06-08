@@ -3,6 +3,7 @@
 
 module Larceny where
 
+import           Control.Monad      (filterM)
 import           Data.Hashable      (Hashable)
 import qualified Data.HashSet       as HS
 import           Data.Map           (Map)
@@ -14,6 +15,9 @@ import           Data.Text          (Text)
 import qualified Data.Text          as T
 import qualified Data.Text.Encoding as T
 import qualified Data.Text.Lazy     as LT
+import qualified Data.Text.Lazy.IO  as LT
+import           System.Directory   (doesDirectoryExist, listDirectory)
+import           System.FilePath    (dropExtension, takeExtension)
 import qualified Text.HTML.DOM      as D
 import qualified Text.XML           as X
 
@@ -24,6 +28,26 @@ type Substitutions = Map Blank Fill
 type Path = [Text]
 newtype Template = Template { runTemplate :: Path -> Substitutions -> Library -> IO Text }
 type Library = Map Path Template
+
+
+loadTemplates :: FilePath -> IO Library
+loadTemplates path =
+  do tpls <- getAllTemplates path
+     M.fromList <$> mapM (\file -> do content <- LT.readFile (path <> "/" <> file)
+                                      return (mkPath file, parse content))
+                         tpls
+  where mkPath p = T.splitOn "/" $ T.pack $ dropExtension p
+
+getAllTemplates :: FilePath -> IO [FilePath]
+getAllTemplates path =
+  do cs <- listDirectory path
+     let tpls = filter ((== ".tpl") . takeExtension) cs
+     print cs
+     dirs <- filterM (doesDirectoryExist . (\d -> path <> "/" <> d)) cs
+     print dirs
+     rs <- mapM (\dir -> do r <- getAllTemplates (path <> "/" <> dir)
+                            return $ map (\p -> dir <> "/" <> p) r) dirs
+     return $ tpls ++ concat rs
 
 need :: Map Blank Fill -> [Blank] -> Text -> Text
 need m keys rest =
@@ -76,7 +100,7 @@ plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
 parse t =
-  let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT (LT.fromStrict ("<div>" <> t <> "</div>"))
+  let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
   in mk nodes
 
 mk :: [X.Node] -> Template
