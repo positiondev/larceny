@@ -174,7 +174,7 @@ tpl6 = "<!doctype html>\n\
         \\n\
         \</html>"
 
-subst :: Substitutions
+subst :: Substitutions ()
 subst = fills [ ("site-title", text "Gotham Girls roster")
             , ("name", text "Gotham Girls roster")
             , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
@@ -189,14 +189,14 @@ subst = fills [ ("site-title", text "Gotham Girls roster")
                                 (\n d _t -> return $ T.take n d <> "...")))
             , ("clients", clientFills) ]
 
-tplLib :: Library
+tplLib :: Library ()
 tplLib = M.fromList [(["skater"], (parse "Beyonslay") )]
 
 data Client = Client { clientName :: Text
                      , clientUrl  :: Text
                      , clientLogo :: Text } deriving (Eq, Show)
 
-clientFills :: Fill
+clientFills :: Fill ()
 clientFills = mapFills (\(Client name url logo) ->
                           fills [ ("client-name", text name)
                                 , ("client-url", text url)
@@ -272,7 +272,7 @@ footerTpl =
         \      </div> <!-- .row -->\n\
         \    </div> <!-- .container -->\n"
 
-positionTplLib :: Library
+positionTplLib :: Library ()
 positionTplLib = M.fromList
   [ (["header"], parse headerTpl)
   , (["clients"], parse clientsTpl)

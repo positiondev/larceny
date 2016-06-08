@@ -1,10 +1,12 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import qualified Data.Map       as M
-import           Data.Monoid    ((<>))
-import           Data.Text      (Text)
-import qualified Data.Text      as T
-import qualified Data.Text.Lazy as LT
+import           Control.Monad.State (evalStateT, get, modify)
+import           Control.Monad.Trans (liftIO)
+import qualified Data.Map            as M
+import           Data.Monoid         ((<>))
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Lazy      as LT
 import           Examples
 import           Larceny
 import           Test.Hspec
@@ -32,21 +34,21 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-shouldRender :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
+shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- runTemplate (parse (LT.fromStrict t')) pth s l
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
-shouldRenderDef :: (Text, Substitutions, Library) -> Text -> Expectation
+shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- runTemplate (parse (LT.fromStrict t')) ["default"] s l
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     T.replace " " "" rendered `shouldBe`
       T.replace " " "" output
 
-shouldRenderContaining :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
+shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- runTemplate (parse (LT.fromStrict t)) pth s l
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 spec :: IO ()
@@ -122,7 +124,7 @@ spec = hspec $ do
 
     it "should allow you to use IO in fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", \m _t _l -> do putStrLn "***********\nHello World\n***********"
+       fills [("desc", \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
                                       return $ T.take (read $ T.unpack (m M.! "length"))
                                                "A really long description"
                                                <> "...")],
@@ -159,5 +161,15 @@ spec = hspec $ do
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
       (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
+
+  describe "statefulness" $ do
+    it "a fill should be able to affect subsequent fills" $ do
+       renderWith (M.fromList [(["default"], parse "<x/><x/>")])
+                  (fills [("x", \_ _ _ -> do modify (+1)
+                                             s <- get
+                                             return (T.pack (show s)))])
+                  0
+                  ["default"]
+       `shouldReturn` Just "12"
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
