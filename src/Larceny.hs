@@ -3,23 +3,22 @@
 
 module Larceny where
 
-import           Control.Monad      (filterM)
-import           Data.Hashable      (Hashable)
-import qualified Data.HashSet       as HS
-import           Data.Map           (Map)
-import qualified Data.Map           as M
-import           Data.Maybe         (fromMaybe, isJust, mapMaybe)
-import           Data.Monoid        ((<>))
-import qualified Data.Set           as S
-import           Data.Text          (Text)
-import qualified Data.Text          as T
-import qualified Data.Text.Encoding as T
-import qualified Data.Text.Lazy     as LT
-import qualified Data.Text.Lazy.IO  as LT
-import           System.Directory   (doesDirectoryExist, listDirectory)
-import           System.FilePath    (dropExtension, takeExtension)
-import qualified Text.HTML.DOM      as D
-import qualified Text.XML           as X
+import           Control.Monad     (filterM)
+import           Data.Hashable     (Hashable)
+import qualified Data.HashSet      as HS
+import           Data.Map          (Map)
+import qualified Data.Map          as M
+import           Data.Maybe        (fromMaybe, mapMaybe)
+import           Data.Monoid       ((<>))
+import qualified Data.Set          as S
+import           Data.Text         (Text)
+import qualified Data.Text         as T
+import qualified Data.Text.Lazy    as LT
+import qualified Data.Text.Lazy.IO as LT
+import           System.Directory  (doesDirectoryExist, listDirectory)
+import           System.FilePath   (dropExtension, takeExtension)
+import qualified Text.HTML.DOM     as D
+import qualified Text.XML          as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
@@ -99,6 +98,7 @@ fill m = \_m (pth, Template tpl) l -> tpl pth m l
 plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
+parse :: LT.Text -> Template
 parse t =
   let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
   in mk nodes
@@ -123,6 +123,7 @@ process pth m l unbound (n:ns) = do
       X.NodeElement (X.Element tn atr kids)     -> processFancy pth m l tn atr kids
       X.NodeContent t               -> return [t]
       X.NodeComment c                -> return ["<!--" <> c <> "-->"]
+      X.NodeInstruction _       -> return []
   restOfNodes <- process pth m l unbound ns
   return $ processedNode ++ restOfNodes
 
@@ -164,18 +165,18 @@ processApply :: Path -> Substitutions -> Library ->
 processApply pth m l atr kids = do
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
                                           (M.lookup "template" atr)
-  let (absolutePath, tplToApply) = case findTemplate (init pth) l tplPath of
+  let (absolutePath, tplToApply) = case findTemplate (init pth) tplPath of
                                     (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " in " <> show (M.keys l)
                                     (targetPath, Just tpl) -> (targetPath, tpl)
   contentTpl <- runTemplate (mk kids) pth m l
   let contentSub = fills [("apply-content",
                         text contentTpl)]
   sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
-  where findTemplate [] l targetPath = (targetPath, M.lookup targetPath l)
-        findTemplate pth' l targetPath =
+  where findTemplate [] targetPath = (targetPath, M.lookup targetPath l)
+        findTemplate pth' targetPath =
           case M.lookup (pth' ++ targetPath) l of
             Just tpl -> (pth' ++ targetPath, Just tpl)
-            Nothing -> findTemplate (init pth') l targetPath
+            Nothing -> findTemplate (init pth') targetPath
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []

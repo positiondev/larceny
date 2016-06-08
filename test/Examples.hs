@@ -2,10 +2,11 @@
 
 module Examples where
 
-import qualified Data.Map    as M
-import           Data.Monoid ((<>))
-import           Data.Text   (Text)
-import qualified Data.Text   as T
+import qualified Data.Map       as M
+import           Data.Monoid    ((<>))
+import           Data.Text      (Text)
+import qualified Data.Text      as T
+import qualified Data.Text.Lazy as LT
 import           Larceny
 
 tpl1 :: Text
@@ -195,11 +196,13 @@ data Client = Client { clientName :: Text
                      , clientUrl  :: Text
                      , clientLogo :: Text } deriving (Eq, Show)
 
+clientFills :: Fill
 clientFills = mapFills (\(Client name url logo) ->
                           fills [ ("client-name", text name)
                                 , ("client-url", text url)
                                 , ("client-logo", text logo)]) clients
 
+clients :: [Client]
 clients = [Client "Seven Stories Press"
                   "http://www.sevenstories.com"
                   "img/logo_ssp.gif",
@@ -216,6 +219,7 @@ clients = [Client "Seven Stories Press"
                   "http://www.jacobinmag.com"
                   "img/logo_jacobin.gif"]
 
+clientsTpl :: LT.Text
 clientsTpl =
         "      <div class=\"row section\">\n\
         \        <div class=\"three columns\">\n\
@@ -238,6 +242,7 @@ clientsTpl =
         \        </div>\n\
         \      </div> <!-- .section -->\n"
 
+headerTpl :: LT.Text
 headerTpl =
         "  <div class=\"container\">\n\
         \      <div class=\"row\">\n\
@@ -255,6 +260,7 @@ headerTpl =
         \      </div> <!-- .row -->\n\
         \    </div> <!-- .container -->\n"
 
+footerTpl :: LT.Text
 footerTpl =
         "    <div class=\"container footer\">\n\
         \      <div class=\"row\">\n\
