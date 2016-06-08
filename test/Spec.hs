@@ -73,6 +73,20 @@ spec = hspec $ do
         `shouldRender` "<h1>Ohio Roller Girls</h1>\
                        \<p>The Smacktivist</p>"
 
+  describe "bind" $ do
+    it "should let you bind tags to fills within templates" $ do
+      ("<bind tag=\"sport\">Roller derby</bind><sport />",
+       mempty,
+       mempty) `shouldRender` "Roller derby"
+    it "should let you use binds within binds" $ do
+      ("<bind tag=\"sport\"><bind tag=\"adjective\">awesome</bind>Roller derby is <adjective /></bind><sport />",
+        mempty,
+        mempty) `shouldRender` "Roller derby is awesome"
+    it "should let you bind with nested blanks" $ do
+      ("<bind tag=\"sport\">Roller derby is <adjective /></bind><sport />",
+        fills [("adjective", text "awesome")],
+        mempty) `shouldRender` "Roller derby is awesome"
+
   describe "mapFills" $ do
     it "should map the fills over a list" $ do
       (tpl4, subst, mempty) `shouldRender` tpl4Output

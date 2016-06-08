@@ -165,7 +165,7 @@ processApply m l atr kids = do
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
 findUnbound (X.Element tn atr kids:ns) =
-     if tn == "apply" || tn `elem` plainNodes
+     if tn `elem` ("apply":"bind":plainNodes)
      then findUnboundAttrs atr ++ findUnbound kids
      else tn : findUnboundAttrs atr
    ++ findUnbound ns
