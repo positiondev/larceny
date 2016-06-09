@@ -49,21 +49,15 @@ getAllTemplates :: FilePath -> IO [FilePath]
 getAllTemplates path =
   do cs <- listDirectory path
      let tpls = filter ((== ".tpl") . takeExtension) cs
-     print cs
      dirs <- filterM (doesDirectoryExist . (\d -> path <> "/" <> d)) cs
-     print dirs
      rs <- mapM (\dir -> do r <- getAllTemplates (path <> "/" <> dir)
                             return $ map (\p -> dir <> "/" <> p) r) dirs
      return $ tpls ++ concat rs
 
 need :: Map Blank (Fill s) -> [Blank] -> Text -> Text
 need m keys rest =
-  let sk = S.fromList keys
-      sm = M.keysSet m
-      d = S.difference sk sm
-  in if S.null d
-        then rest
-        else error $ "Missing keys: " <> show d
+  let d = S.difference (S.fromList keys) (M.keysSet m)
+  in if S.null d then rest  else error $ "Missing keys: " <> show d
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
@@ -88,9 +82,7 @@ instance FromAttr Int where
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs = k (readAttr attrName attrs)
 
-(%) :: (a -> AttrArgs -> b)
-    -> (b -> AttrArgs -> c)
-    ->  a -> AttrArgs -> c
+(%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
 mapFills :: (a -> Substitutions s) -> [a] -> Fill s
