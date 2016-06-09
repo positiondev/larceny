@@ -17,7 +17,9 @@ main = spec
 tpl4Output :: Text
 tpl4Output = "\
 \        <body>                         \
-\          <h1>Gotham Girls roster</h1> \
+\          <h1>                         \
+\            Gotham Girls Roller Derby  \
+\          </h1>                        \
 \          <ul>                         \
 \            <li>                       \
 \              <h2>Bonnie Thunders</h2> \
@@ -61,8 +63,7 @@ spec = hspec $ do
 
   describe "add" $ do
     it "should allow overriden tags" $ do
-      ("<name /><skater><name /></skater>", subst, mempty) `shouldRenderDef` "Gotham Girls roster Amy Roundhouse"
-
+      ("<name /><skater><name /></skater>", subst, mempty) `shouldRenderDef` "Gotham Girls Amy Roundhouse"
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"hello\" />",
@@ -108,6 +109,20 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
+
+  describe "bind" $ do
+    it "should let you bind tags to fills within templates" $ do
+      ("<bind tag=\"sport\">Roller derby</bind><sport />",
+       mempty,
+       mempty) `shouldRenderDef` "Roller derby"
+    it "should let you use binds within binds" $ do
+      ("<bind tag=\"sport\"><bind tag=\"adjective\">awesome</bind>Roller derby is <adjective /></bind><sport />",
+        mempty,
+        mempty) `shouldRenderDef` "Roller derby is awesome"
+    it "should let you bind with nested blanks" $ do
+      ("<bind tag=\"sport\">Roller derby is <adjective /></bind><sport />",
+        fills [("adjective", text "awesome")],
+        mempty) `shouldRenderDef` "Roller derby is awesome"
 
   describe "mapFills" $ do
     it "should map the fills over a list" $ do

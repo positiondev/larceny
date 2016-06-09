@@ -20,8 +20,11 @@ tpl3 = "<apply template=\"skater\" />"
 
 tpl4 :: Text
 tpl4 = "<body>                     \
+\          <bind tag=\"sport\">    \
+\            Roller Derby          \
+\          </bind>                 \
 \          <h1>                    \
-\            <name/>               \
+\            <name/> <sport/>      \
 \          </h1>                   \
 \          <ul>                    \
 \            <skaters>             \
@@ -176,7 +179,7 @@ tpl6 = "<!doctype html>\n\
 
 subst :: Substitutions ()
 subst = fills [ ("site-title", text "Gotham Girls roster")
-            , ("name", text "Gotham Girls roster")
+            , ("name", text "Gotham Girls")
             , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
             , ("skaters", mapFills
                           (\(n, p) -> fills [("name", text n)

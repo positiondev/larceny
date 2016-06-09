@@ -114,6 +114,10 @@ fillIn tn m = m M.! Blank tn
 
 process :: Path -> Substitutions s -> Library s -> [Text] -> [X.Node] -> StateT s IO [Text]
 process _ _ _ _ [] = return []
+process pth m l unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
+  let tagName = atr M.! "tag"
+      newFills = fills [(tagName, \_a _t _l -> runTemplate (mk kids) pth m l)] in
+  process pth (newFills `M.union` m) l unbound ns
 process pth m l unbound (n:ns) = do
   processedNode <-
     case n of
@@ -179,11 +183,11 @@ processApply pth m l atr kids = do
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
-findUnbound (X.NodeElement (X.Element tn atr kids):ns) =
-     let tagName = X.nameLocalName tn in
-     if tn == "apply" || HS.member tagName plainNodes
+findUnbound (X.NodeElement (X.Element name atr kids):ns) =
+     let tn = X.nameLocalName name in
+     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
      then findUnboundAttrs atr ++ findUnbound kids
-     else tagName : findUnboundAttrs atr
+     else tn : findUnboundAttrs atr
    ++ findUnbound ns
 findUnbound (_:ns) = findUnbound ns
 
