@@ -3,34 +3,45 @@
 
 module Larceny where
 
-import           Control.Monad     (filterM)
-import           Data.Hashable     (Hashable)
-import qualified Data.HashSet      as HS
-import           Data.Map          (Map)
-import qualified Data.Map          as M
-import           Data.Maybe        (fromMaybe, mapMaybe)
-import           Data.Monoid       ((<>))
-import qualified Data.Set          as S
-import           Data.Text         (Text)
-import qualified Data.Text         as T
-import qualified Data.Text.Lazy    as LT
-import qualified Data.Text.Lazy.IO as LT
-import           System.Directory  (doesDirectoryExist, listDirectory)
-import           System.FilePath   (dropExtension, takeExtension)
-import qualified Text.HTML.DOM     as D
-import           Text.Read         (readMaybe)
-import qualified Text.XML          as X
+import           Control.Monad       (filterM)
+import           Control.Monad.State (StateT, evalStateT)
+import           Data.Hashable       (Hashable)
+import qualified Data.HashSet        as HS
+import           Data.Map            (Map)
+import qualified Data.Map            as M
+import           Data.Maybe          (fromMaybe, mapMaybe)
+import           Data.Monoid         ((<>))
+import qualified Data.Set            as S
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Lazy      as LT
+import qualified Data.Text.Lazy.IO   as LT
+import           System.Directory    (doesDirectoryExist, listDirectory)
+import           System.FilePath     (dropExtension, takeExtension)
+import qualified Text.HTML.DOM       as D
+import           Text.Read           (readMaybe)
+import qualified Text.XML            as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
-type Fill = AttrArgs -> (Path, Template) -> Library -> IO Text
-type Substitutions = Map Blank Fill
+type Fill s = AttrArgs -> (Path, Template s) -> Library s -> StateT s IO Text
+type Substitutions s = Map Blank (Fill s)
 type Path = [Text]
-newtype Template = Template { runTemplate :: Path -> Substitutions -> Library -> IO Text }
-type Library = Map Path Template
+newtype Template s = Template { runTemplate :: Path
+                                            -> Substitutions s
+                                            -> Library s
+                                            -> StateT s IO Text }
+type Library s = Map Path (Template s)
 
+render :: Library s -> s -> Path -> IO (Maybe Text)
+render l = renderWith l mempty
 
-loadTemplates :: FilePath -> IO Library
+renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
+renderWith l sub s p = case M.lookup p l of
+                         Nothing -> return Nothing
+                         Just (Template run) -> Just <$> evalStateT (run p sub l) s
+
+loadTemplates :: FilePath -> IO (Library s)
 loadTemplates path =
   do tpls <- getAllTemplates path
      M.fromList <$> mapM (\file -> do content <- LT.readFile (path <> "/" <> file)
@@ -42,30 +53,27 @@ getAllTemplates :: FilePath -> IO [FilePath]
 getAllTemplates path =
   do cs <- listDirectory path
      let tpls = filter ((== ".tpl") . takeExtension) cs
-     print cs
      dirs <- filterM (doesDirectoryExist . (\d -> path <> "/" <> d)) cs
-     print dirs
      rs <- mapM (\dir -> do r <- getAllTemplates (path <> "/" <> dir)
                             return $ map (\p -> dir <> "/" <> p) r) dirs
      return $ tpls ++ concat rs
 
-need :: Path -> Map Blank Fill -> [Blank] -> Text -> Text
+need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
 need pth m keys rest =
-  let sk = S.fromList keys
-      sm = M.keysSet m
-      d = S.difference sk sm
+  let d = S.difference (S.fromList keys) (M.keysSet m)
   in if S.null d
      then rest
-     else error $ "Template " <> show pth <> " is missing substitutions for blanks: " <> show d
+     else error $ "Template " <> show pth
+          <> " is missing substitutions for blanks: " <> show d
 
-add :: Substitutions -> Template -> Template
+add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
-text :: Text -> Fill
+text :: Text -> Fill s
 text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> Text -> IO Text) -> Fill
+useAttrs :: (AttrArgs -> Text -> StateT s IO Text) -> Fill s
 useAttrs f = \atrs (pth, tpl) lib ->
   do childText <- runTemplate tpl pth mempty lib
      f atrs childText
@@ -102,40 +110,42 @@ a attrName k attrs =
                                 <> attrName <> "\" as type " <> t <> "."
             AttrOtherError t -> "Attribute error: " <> t
 
-(%) :: (a -> AttrArgs -> b)
-    -> (b -> AttrArgs -> c)
-    ->  a -> AttrArgs -> c
+(%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
-mapFills :: (a -> Substitutions) -> [a] -> Fill
+mapFills :: (a -> Substitutions s) -> [a] -> Fill s
 mapFills f xs = \_m (pth, tpl) lib ->
     T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
-fills :: [(Text, Fill)] -> Substitutions
+fills :: [(Text, Fill s)] -> Substitutions s
 fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
-fill :: Substitutions -> Fill
+fill :: Substitutions s -> Fill s
 fill m = \_m (pth, Template tpl) l -> tpl pth m l
 
 plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
-parse :: LT.Text -> Template
+parse :: LT.Text -> Template s
 parse t =
   let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
   in mk nodes
 
-mk :: [X.Node] -> Template
+mk :: [X.Node] -> Template s
 mk nodes = let unbound = findUnbound nodes
            in Template $ \pth m l ->
                 need pth m (map Blank unbound) <$>
                 (T.concat <$> process pth m l unbound nodes)
 
-fillIn :: Text -> Substitutions -> Fill
+fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = m M.! Blank tn
 
-process :: Path -> Substitutions -> Library -> [Text] -> [X.Node] -> IO [Text]
+process :: Path -> Substitutions s -> Library s -> [Text] -> [X.Node] -> StateT s IO [Text]
 process _ _ _ _ [] = return []
+process pth m l unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
+  let tagName = atr M.! "tag"
+      newFills = fills [(tagName, \_a _t _l -> runTemplate (mk kids) pth m l)] in
+  process pth (newFills `M.union` m) l unbound ns
 process pth m l unbound (n:ns) = do
   processedNode <-
     case n of
@@ -151,8 +161,8 @@ process pth m l unbound (n:ns) = do
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: Path -> Substitutions -> Library -> [Text] ->
-                 X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
+processPlain :: Path -> Substitutions s -> Library s -> [Text] ->
+                 X.Name -> Map X.Name Text -> [X.Node] -> StateT s IO [Text]
 processPlain pth m l unbound tn atr kids = do
   atrs <- attrsToText atr
   processed <- process pth m l unbound kids
@@ -161,7 +171,6 @@ processPlain pth m l unbound tn atr kids = do
            ++ processed
            ++ ["</" <> tagName <> ">"]
   where attrsToText attrs = T.concat <$> mapM attrToText (M.toList attrs)
-        attrToText :: (X.Name, Text) -> IO Text
         attrToText (k,v) =
           let name = X.nameLocalName k in
           case mUnboundAttr (k,v) of
@@ -172,8 +181,8 @@ processPlain pth m l unbound tn atr kids = do
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: Path -> Substitutions -> Library ->
-                X.Name -> Map X.Name Text -> [X.Node] -> IO [Text]
+processFancy :: Path -> Substitutions s -> Library s ->
+                X.Name -> Map X.Name Text -> [X.Node] -> StateT s IO [Text]
 processFancy pth m l tn atr kids =
   let tagName = X.nameLocalName tn in
   sequence [ fillIn tagName m (M.mapKeys X.nameLocalName atr) (pth, add m (mk kids)) l]
@@ -182,8 +191,8 @@ processFancy pth m l tn atr kids =
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
-processApply :: Path -> Substitutions -> Library ->
-                 Map X.Name Text -> [X.Node] -> IO [Text]
+processApply :: Path -> Substitutions s -> Library s ->
+                 Map X.Name Text -> [X.Node] -> StateT s IO [Text]
 processApply pth m l atr kids = do
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
                                           (M.lookup "template" atr)
@@ -202,11 +211,11 @@ processApply pth m l atr kids = do
 
 findUnbound :: [X.Node] -> [Text]
 findUnbound [] = []
-findUnbound (X.NodeElement (X.Element tn atr kids):ns) =
-     let tagName = X.nameLocalName tn in
-     if tn == "apply" || HS.member tagName plainNodes
+findUnbound (X.NodeElement (X.Element name atr kids):ns) =
+     let tn = X.nameLocalName name in
+     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
      then findUnboundAttrs atr ++ findUnbound kids
-     else tagName : findUnboundAttrs atr
+     else tn : findUnboundAttrs atr
    ++ findUnbound ns
 findUnbound (_:ns) = findUnbound ns
 

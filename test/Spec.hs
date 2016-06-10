@@ -1,12 +1,14 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-import           Control.DeepSeq   (force)
-import           Control.Exception (evaluate)
-import qualified Data.Map          as M
-import           Data.Monoid       ((<>))
-import           Data.Text         (Text)
-import qualified Data.Text         as T
-import qualified Data.Text.Lazy    as LT
+import           Control.DeepSeq     (force)
+import           Control.Exception   (evaluate)
+import           Control.Monad.State (evalStateT, get, modify)
+import           Control.Monad.Trans (liftIO)
+import qualified Data.Map            as M
+import           Data.Monoid         ((<>))
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Lazy      as LT
 import           Examples
 import           Larceny
 import           Test.Hspec
@@ -17,7 +19,9 @@ main = spec
 tpl4Output :: Text
 tpl4Output = "\
 \        <body>                         \
-\          <h1>Gotham Girls roster</h1> \
+\          <h1>                         \
+\            Gotham Girls Roller Derby  \
+\          </h1>                        \
 \          <ul>                         \
 \            <li>                       \
 \              <h2>Bonnie Thunders</h2> \
@@ -34,26 +38,26 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-shouldRender :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
+shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- runTemplate (parse (LT.fromStrict t')) pth s l
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
   T.replace " " "" rendered `shouldBe`
     T.replace " " "" output
 
-shouldRenderDef :: (Text, Substitutions, Library) -> Text -> Expectation
+shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- runTemplate (parse (LT.fromStrict t')) ["default"] s l
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     T.replace " " "" rendered `shouldBe`
       T.replace " " "" output
 
-shouldRenderContaining :: ([Text], Text, Substitutions, Library) -> Text -> Expectation
+shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- runTemplate (parse (LT.fromStrict t)) pth s l
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
-shouldErrorDef :: (Text, Substitutions, Library) -> String -> Expectation
+shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
 shouldErrorDef (t', s, l) output = do
-    renderAttempt <- runTemplate (parse (LT.fromStrict t')) ["default"] s l
+    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
 
 spec :: IO ()
@@ -66,8 +70,7 @@ spec = hspec $ do
 
   describe "add" $ do
     it "should allow overriden tags" $ do
-      ("<name /><skater><name /></skater>", subst, mempty) `shouldRenderDef` "Gotham Girls roster Amy Roundhouse"
-
+      ("<name /><skater><name /></skater>", subst, mempty) `shouldRenderDef` "Gotham Girls Amy Roundhouse"
   describe "apply" $ do
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"hello\" />",
@@ -114,6 +117,20 @@ spec = hspec $ do
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
 
+  describe "bind" $ do
+    it "should let you bind tags to fills within templates" $ do
+      ("<bind tag=\"sport\">Roller derby</bind><sport />",
+       mempty,
+       mempty) `shouldRenderDef` "Roller derby"
+    it "should let you use binds within binds" $ do
+      ("<bind tag=\"sport\"><bind tag=\"adjective\">awesome</bind>Roller derby is <adjective /></bind><sport />",
+        mempty,
+        mempty) `shouldRenderDef` "Roller derby is awesome"
+    it "should let you bind with nested blanks" $ do
+      ("<bind tag=\"sport\">Roller derby is <adjective /></bind><sport />",
+        fills [("adjective", text "awesome")],
+        mempty) `shouldRenderDef` "Roller derby is awesome"
+
   describe "mapFills" $ do
     it "should map the fills over a list" $ do
       (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
@@ -129,7 +146,7 @@ spec = hspec $ do
 
     it "should allow you to use IO in fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", \m _t _l -> do putStrLn "***********\nHello World\n***********"
+       fills [("desc", \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
                                       return $ T.take (read $ T.unpack (m M.! "length"))
                                                "A really long description"
                                                <> "...")],
@@ -188,5 +205,15 @@ spec = hspec $ do
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
       (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
+
+  describe "statefulness" $ do
+    it "a fill should be able to affect subsequent fills" $ do
+       renderWith (M.fromList [(["default"], parse "<x/><x/>")])
+                  (fills [("x", \_ _ _ -> do modify ((+1) :: Int -> Int)
+                                             s <- get
+                                             return (T.pack (show s)))])
+                  0
+                  ["default"]
+       `shouldReturn` Just "12"
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

@@ -30,6 +30,7 @@ library
                      , xml-conduit
                      , directory
                      , filepath
+                     , mtl
   hs-source-dirs:      src
   default-language:    Haskell2010
 
@@ -48,6 +49,7 @@ test-suite test
                      , directory
                      , filepath
                      , deepseq
+                     , mtl
   hs-source-dirs:      test
   default-language:    Haskell2010
 
