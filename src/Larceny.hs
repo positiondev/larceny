@@ -19,6 +19,7 @@ import qualified Data.Text.Lazy.IO   as LT
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
+import           Text.Read           (readMaybe)
 import qualified Text.XML            as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
@@ -26,7 +27,10 @@ type AttrArgs = Map Text Text
 type Fill s = AttrArgs -> (Path, Template s) -> Library s -> StateT s IO Text
 type Substitutions s = Map Blank (Fill s)
 type Path = [Text]
-newtype Template s = Template { runTemplate :: Path -> Substitutions s -> Library s -> StateT s IO Text }
+newtype Template s = Template { runTemplate :: Path
+                                            -> Substitutions s
+                                            -> Library s
+                                            -> StateT s IO Text }
 type Library s = Map Path (Template s)
 
 render :: Library s -> s -> Path -> IO (Maybe Text)
@@ -54,10 +58,13 @@ getAllTemplates path =
                             return $ map (\p -> dir <> "/" <> p) r) dirs
      return $ tpls ++ concat rs
 
-need :: Map Blank (Fill s) -> [Blank] -> Text -> Text
-need m keys rest =
+need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
+need pth m keys rest =
   let d = S.difference (S.fromList keys) (M.keysSet m)
-  in if S.null d then rest  else error $ "Missing keys: " <> show d
+  in if S.null d
+     then rest
+     else error $ "Template " <> show pth
+          <> " is missing substitutions for blanks: " <> show d
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
@@ -71,16 +78,37 @@ useAttrs f = \atrs (pth, tpl) lib ->
   do childText <- runTemplate tpl pth mempty lib
      f atrs childText
 
+data AttrError = AttrMissing
+               | AttrUnparsable Text
+               | AttrOtherError Text deriving (Eq, Show)
+
 class FromAttr a where
-  readAttr :: Text -> AttrArgs -> a
+  readAttr :: Maybe Text -> Either AttrError a
 
 instance FromAttr Text where
-  readAttr attrName attrs = attrs M.! attrName
+  readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr attrName attrs = read $ T.unpack (attrs M.! attrName)
+  readAttr mAttr = case mAttr of
+                    Just attr  -> case readMaybe $ T.unpack attr of
+                                    Just int -> Right int
+                                    Nothing -> Left $ AttrUnparsable "Int"
+                    Nothing -> Left AttrMissing
+instance FromAttr a => FromAttr (Maybe a) where
+  readAttr mAttr = case mAttr of
+                    Just attr  -> readAttr $ Just attr
+                    Nothing -> Right Nothing
 
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
-a attrName k attrs = k (readAttr attrName attrs)
+a attrName k attrs =
+  let mAttr = M.lookup attrName attrs in
+  k (either (error . T.unpack . attrError) id (readAttr mAttr))
+  where attrError e =
+          case e of
+            AttrMissing      -> "Attribute error: Unable to find attribute \"" <>
+                                attrName <> "\"."
+            AttrUnparsable t -> "Attribute error: Unable to parse attribute \""
+                                <> attrName <> "\" as type " <> t <> "."
+            AttrOtherError t -> "Attribute error: " <> t
 
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
@@ -106,7 +134,7 @@ parse t =
 mk :: [X.Node] -> Template s
 mk nodes = let unbound = findUnbound nodes
            in Template $ \pth m l ->
-                need m (map Blank unbound) <$>
+                need pth m (map Blank unbound) <$>
                 (T.concat <$> process pth m l unbound nodes)
 
 fillIn :: Text -> Substitutions s -> Fill s
@@ -169,7 +197,7 @@ processApply pth m l atr kids = do
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
                                           (M.lookup "template" atr)
   let (absolutePath, tplToApply) = case findTemplate (init pth) tplPath of
-                                    (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " in " <> show (M.keys l)
+                                    (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
                                     (targetPath, Just tpl) -> (targetPath, tpl)
   contentTpl <- runTemplate (mk kids) pth m l
   let contentSub = fills [("apply-content",

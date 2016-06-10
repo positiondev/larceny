@@ -1,5 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
+import           Control.DeepSeq     (force)
+import           Control.Exception   (evaluate)
 import           Control.Monad.State (evalStateT, get, modify)
 import           Control.Monad.Trans (liftIO)
 import qualified Data.Map            as M
@@ -52,6 +54,11 @@ shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -
 shouldRenderContaining (pth, t, s, l) excerpt = do
   rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
+
+shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
+shouldErrorDef (t', s, l) output = do
+    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
+    (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
 
 spec :: IO ()
 spec = hspec $ do
@@ -166,6 +173,28 @@ spec = hspec $ do
              , ("desc", useAttrs ((a"length")
                                   (\n t -> return $ T.take n t <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
+
+    it "should allow optional attributes by giving a Maybe type" $ do
+      let descFill n e t =
+            let ending = maybe "..." id e in
+            return $ T.take n t <> ending
+      ("<desc length=\"10\">A really long description</desc>",
+       fills [("desc", useAttrs $ (a"length" % a"ending") descFill)],
+       mempty) `shouldRenderDef` "A really l..."
+
+    it "should give a nice error message if attribute is missing" $ do
+      ("<desc />",
+       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
+                                            "A really long description"
+                                            <> "...")))],
+        mempty) `shouldErrorDef` "Attribute error: Unable to find attribute \"length\"."
+
+    it "should give a nice error message if attribute is unparsable" $ do
+      ("<desc length=\"infinite\" />",
+       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
+                                            "A really long description"
+                                            <> "...")))],
+        mempty) `shouldErrorDef` "Attribute error: Unable to parse attribute \"length\" as type Int."
 
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
