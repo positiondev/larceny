@@ -95,7 +95,7 @@ instance FromAttr Int where
                     Nothing -> Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr mAttr = case mAttr of
-                    Just attr  -> readAttr $ Just attr
+                    Just attr -> Just <$> readAttr mAttr
                     Nothing -> Right Nothing
 
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
@@ -138,7 +138,10 @@ mk nodes = let unbound = findUnbound nodes
                 (T.concat <$> process pth m l unbound nodes)
 
 fillIn :: Text -> Substitutions s -> Fill s
-fillIn tn m = m M.! Blank tn
+fillIn tn m =
+  fromMaybe
+     (error $ "Missing fill for blank: \"" <> T.unpack tn <> "\"")
+     (M.lookup (Blank tn) m)
 
 process :: Path -> Substitutions s -> Library s -> [Text] -> [X.Node] -> StateT s IO [Text]
 process _ _ _ _ [] = return []

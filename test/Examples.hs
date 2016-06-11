@@ -179,21 +179,21 @@ tpl6 = "<!doctype html>\n\
 
 subst :: Substitutions ()
 subst = fills [ ("site-title", text "Gotham Girls roster")
-            , ("name", text "Gotham Girls")
-            , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
-            , ("skaters", mapFills
+              , ("name", text "Gotham Girls")
+              , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
+              , ("skaters", mapFills
                           (\(n, p) -> fills [("name", text n)
                                             ,("position", text p)])
                           [ ("Bonnie Thunders", "jammer")
                           , ("Donna Matrix", "blocker")
                           , ("V-Diva", "jammer") ] )
-            , ("desc", useAttrs ((a"length" %
-                                 a"text")
-                                (\n d _t -> return $ T.take n d <> "...")))
-            , ("clients", clientFills) ]
+              , ("desc", useAttrs ((a"length" %
+                                    a"text")
+                                   (\n d _t -> return $ T.take n d <> "...")))
+              , ("clients", clientFills) ]
 
 tplLib :: Library ()
-tplLib = M.fromList [(["skater"], (parse "Beyonslay") )]
+tplLib = M.fromList [(["skater"], parse "Beyonslay")]
 
 data Client = Client { clientName :: Text
                      , clientUrl  :: Text
@@ -224,26 +224,26 @@ clients = [Client "Seven Stories Press"
 
 clientsTpl :: LT.Text
 clientsTpl =
-        "      <div class=\"row section\">\n\
-        \        <div class=\"three columns\">\n\
-        \          <h3>Our Clients</h3>\n\
-        \        </div>\n\
-        \        <div class=\"nine columns clients\">\n\
-        \          <clients> \
-        \<div class=\"client\">\n\
-                   \  <div class=\"logo\">\n\
-                   \    <a href=\"${client-url}\" target=\"_blank\">\n\
-                   \      <img title=\"${client-name\" \
-                   \           src=\"${client-logo}\"/>\n\
-                   \    </a>\n\
-                   \  </div>\n\
-                   \  <a href=\"${client-url}\" target=\"_blank\">\n\
-                   \    <client-name />\n\
-                   \  </a>\n\
-                   \</div> <!-- .client -->\n\
-        \          </clients> \
-        \        </div>\n\
-        \      </div> <!-- .section -->\n"
+        "<div class=\"row section\">\n                           \
+        \  <div class=\"three columns\">\n                       \
+        \    <h3>Our Clients</h3>\n                              \
+        \  </div>\n                                              \
+        \  <div class=\"nine columns clients\">\n                \
+        \    <clients>                                           \
+        \      <div class=\"client\">\n                          \
+        \        <div class=\"logo\">\n                          \
+        \          <a href=\"${client-url}\" target=\"_blank\">\n\
+        \            <img title=\"${client-name\"                \
+        \                 src=\"${client-logo}\"/>\n             \
+        \          </a>\n                                        \
+        \        </div>\n                                        \
+        \        <a href=\"${client-url}\" target=\"_blank\">\n  \
+        \          <client-name />\n                             \
+        \        </a>\n                                          \
+        \      </div> <!-- .client -->\n                         \
+        \    </clients>                                          \
+        \  </div>\n                                              \
+        \</div> <!-- .section -->\n"
 
 headerTpl :: LT.Text
 headerTpl =
@@ -277,6 +277,6 @@ footerTpl =
 
 positionTplLib :: Library ()
 positionTplLib = M.fromList
-  [ (["header"], parse headerTpl)
+  [ (["header"],  parse headerTpl)
   , (["clients"], parse clientsTpl)
-  , (["footer"], parse footerTpl) ]
+  , (["footer"],  parse footerTpl) ]

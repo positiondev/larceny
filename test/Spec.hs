@@ -174,13 +174,15 @@ spec = hspec $ do
                                   (\n t -> return $ T.take n t <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
 
-    it "should allow optional attributes by giving a Maybe type" $ do
-      let descFill n e t =
-            let ending = maybe "..." id e in
-            return $ T.take n t <> ending
+    it "should allow optional attributes by giving a Maybe type (not using the optional)" $ do
       ("<desc length=\"10\">A really long description</desc>",
        fills [("desc", useAttrs $ (a"length" % a"ending") descFill)],
        mempty) `shouldRenderDef` "A really l..."
+
+    it "should allow optional attributes by giving a Maybe type (using optional)" $ do
+      ("<desc length=\"10\" ending=\" and such \">A really long description</desc>",
+       fills [("desc", useAttrs $ (a"length" % a"ending") descFill)],
+       mempty) `shouldRenderDef` "A really l and such"
 
     it "should give a nice error message if attribute is missing" $ do
       ("<desc />",
@@ -215,5 +217,10 @@ spec = hspec $ do
                   0
                   ["default"]
        `shouldReturn` Just "12"
+
+descFill :: Monad m => Int -> Maybe Text -> Text -> m Text
+descFill n e t =
+  let ending = maybe "..." id e in
+    return $ T.take n t <> ending
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
