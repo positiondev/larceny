@@ -95,7 +95,7 @@ instance FromAttr Int where
                     Nothing -> Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr mAttr = case mAttr of
-                    Just attr -> Just <$> readAttr mAttr
+                    Just _  -> Just <$> readAttr mAttr
                     Nothing -> Right Nothing
 
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
