@@ -1,6 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
-{-# LANGUAGE LambdaCase                 #-}
 
 module Larceny where
 
@@ -96,12 +95,11 @@ a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
   k (either (error . T.unpack . attrError) id (readAttr mAttr))
-  where attrError = \case
-          AttrMissing      -> "Attribute error: Unable to find attribute \"" <>
-                              attrName <> "\"."
-          AttrUnparsable t -> "Attribute error: Unable to parse attribute \""
-                              <> attrName <> "\" as type " <> t <> "."
-          AttrOtherError t -> "Attribute error: " <> t
+  where attrError AttrMissing        = "Attribute error: Unable to find attribute \"" <>
+                                       attrName <> "\"."
+        attrError (AttrUnparsable t) = "Attribute error: Unable to parse attribute \""
+                                       <> attrName <> "\" as type " <> t <> "."
+        attrError (AttrOtherError t) = "Attribute error: " <> t
 
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
