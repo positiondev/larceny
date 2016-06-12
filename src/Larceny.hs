@@ -88,15 +88,10 @@ class FromAttr a where
 instance FromAttr Text where
   readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr mAttr = case mAttr of
-                    Just attr  -> case readMaybe $ T.unpack attr of
-                                    Just int -> Right int
-                                    Nothing -> Left $ AttrUnparsable "Int"
-                    Nothing -> Left AttrMissing
+  readAttr = maybe (Left AttrMissing) $
+    maybe (Left AttrUnparsable "Int") Right . readMaybe . T.unpack
 instance FromAttr a => FromAttr (Maybe a) where
-  readAttr mAttr = case mAttr of
-                    Just _  -> Just <$> readAttr mAttr
-                    Nothing -> Right Nothing
+  readAttr = traverse $ readAttr . Just
 
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
