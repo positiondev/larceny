@@ -37,9 +37,7 @@ render :: Library s -> s -> Path -> IO (Maybe Text)
 render l = renderWith l mempty
 
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
-renderWith l sub s p = case M.lookup p l of
-                         Nothing -> return Nothing
-                         Just (Template run) -> Just <$> evalStateT (run p sub l) s
+renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub l) s
 
 loadTemplates :: FilePath -> IO (Library s)
 loadTemplates path =
