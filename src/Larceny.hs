@@ -16,6 +16,7 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import qualified Data.Text.Lazy.IO   as LT
+import           Data.Traversable    (for)
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
@@ -71,10 +72,9 @@ add mouter tpl =
 text :: Text -> Fill s
 text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> Text -> StateT s IO Text) -> Fill s
+useAttrs :: (AttrArgs -> Template s -> Fill s) -> Fill s
 useAttrs f = \atrs (pth, tpl) lib ->
-  do childText <- runTemplate tpl pth mempty lib
-     f atrs childText
+     f atrs tpl atrs (pth, tpl) lib
 
 data AttrError = AttrMissing
                | AttrUnparsable Text
@@ -86,7 +86,7 @@ class FromAttr a where
 instance FromAttr Text where
   readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr (Just attr) = maybe (Left AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
+  readAttr (Just attr) = maybe (Left $ AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
   readAttr Nothing = Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr = traverse $ readAttr . Just

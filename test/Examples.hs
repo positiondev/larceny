@@ -189,7 +189,7 @@ subst = fills [ ("site-title", text "Gotham Girls roster")
                           , ("V-Diva", "jammer") ] )
               , ("desc", useAttrs ((a"length" %
                                     a"text")
-                                   (\n d _t -> return $ T.take n d <> "...")))
+                                   (\n d _t -> text $ T.take n d <> "...")))
               , ("clients", clientFills) ]
 
 tplLib :: Library ()

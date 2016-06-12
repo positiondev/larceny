@@ -155,7 +155,7 @@ spec = hspec $ do
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
+       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
@@ -164,36 +164,41 @@ spec = hspec $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
        fills [("desc", useAttrs ((a"length" %
                                   a"text")
-                                 (\n d _t -> return $ T.take n d <> "...")))],
+                                 (\n d _t -> text $ T.take n d <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use child elements" $ do
+      let descTplFill =
+            useAttrs ((a"length")
+                      (\n t -> do
+                          \_m _t _l -> liftIO $ do
+                            t' <- evalStateT (runTemplate t ["default"] mempty mempty) ()
+                            return $ T.take n t' <> "..."))
       ("<desc length=\"10\">A <adverb /> long description</desc>",
        fills [ ("adverb", text "really")
-             , ("desc", useAttrs ((a"length")
-                                  (\n t -> return $ T.take n t <> "...")))],
+             , ("desc", descTplFill)],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow optional attributes by giving a Maybe type (not using the optional)" $ do
       ("<desc length=\"10\">A really long description</desc>",
-       fills [("desc", useAttrs $ (a"length" % a"ending") descFill)],
+       fills [("desc", descFill)],
        mempty) `shouldRenderDef` "A really l..."
 
     it "should allow optional attributes by giving a Maybe type (using optional)" $ do
       ("<desc length=\"10\" ending=\" and such \">A really long description</desc>",
-       fills [("desc", useAttrs $ (a"length" % a"ending") descFill)],
+       fills [("desc", descFill)],
        mempty) `shouldRenderDef` "A really l and such"
 
     it "should give a nice error message if attribute is missing" $ do
       ("<desc />",
-       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
+       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldErrorDef` "Attribute error: Unable to find attribute \"length\"."
 
     it "should give a nice error message if attribute is unparsable" $ do
       ("<desc length=\"infinite\" />",
-       fills [("desc", useAttrs (a"length" (\n _t -> return $ T.take n
+       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldErrorDef` "Attribute error: Unable to parse attribute \"length\" as type Int."
@@ -218,9 +223,13 @@ spec = hspec $ do
                   ["default"]
        `shouldReturn` Just "12"
 
-descFill :: Monad m => Int -> Maybe Text -> Text -> m Text
-descFill n e t =
-  let ending = maybe "..." id e in
-    return $ T.take n t <> ending
+descFill :: Fill ()
+descFill =
+  useAttrs $ (a"length" % a"ending")
+             (\n e t -> do
+                 let ending = maybe "..." id e
+                 \_m _t _l -> liftIO $ do
+                   t' <- evalStateT (runTemplate t ["default"] mempty mempty) ()
+                   return $ T.take n t' <> ending)
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
