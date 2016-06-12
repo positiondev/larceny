@@ -57,11 +57,11 @@ getAllTemplates path =
                             return $ map (\p -> dir <> "/" <> p) r) dirs
      return $ tpls ++ concat rs
 
-need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
-need pth m keys rest =
+need :: Path -> Map Blank (Fill s) -> [Blank] -> ()
+need pth m keys =
   let d = S.difference (S.fromList keys) (M.keysSet m)
   in if S.null d
-     then rest
+     then ()
      else error $ "Template " <> show pth
           <> " is missing substitutions for blanks: " <> show d
 
@@ -125,7 +125,7 @@ parse t =
 mk :: [X.Node] -> Template s
 mk nodes = let unbound = findUnbound nodes
            in Template $ \pth m l ->
-                need pth m (map Blank unbound) <$>
+                seq (need pth m (map Blank unbound)) <$>
                 (T.concat <$> process pth m l unbound nodes)
 
 fillIn :: Text -> Substitutions s -> Fill s
