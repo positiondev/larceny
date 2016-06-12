@@ -87,7 +87,7 @@ class FromAttr a where
 instance FromAttr Text where
   readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr (Just attr) = maybe (Left AttrUnparsable "Int") Right $ case readMaybe $ T.unpack attr
+  readAttr (Just attr) = maybe (Left AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
   readAttr Nothing = Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr = traverse $ readAttr . Just
