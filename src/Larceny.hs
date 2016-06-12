@@ -37,9 +37,7 @@ render :: Library s -> s -> Path -> IO (Maybe Text)
 render l = renderWith l mempty
 
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
-renderWith l sub s p = case M.lookup p l of
-                         Nothing -> return Nothing
-                         Just (Template run) -> Just <$> evalStateT (run p sub l) s
+renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub l) s
 
 loadTemplates :: FilePath -> IO (Library s)
 loadTemplates path =
@@ -88,27 +86,20 @@ class FromAttr a where
 instance FromAttr Text where
   readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr mAttr = case mAttr of
-                    Just attr  -> case readMaybe $ T.unpack attr of
-                                    Just int -> Right int
-                                    Nothing -> Left $ AttrUnparsable "Int"
-                    Nothing -> Left AttrMissing
+  readAttr (Just attr) = maybe (Left AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
+  readAttr Nothing = Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
-  readAttr mAttr = case mAttr of
-                    Just _  -> Just <$> readAttr mAttr
-                    Nothing -> Right Nothing
+  readAttr = traverse $ readAttr . Just
 
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
   k (either (error . T.unpack . attrError) id (readAttr mAttr))
-  where attrError e =
-          case e of
-            AttrMissing      -> "Attribute error: Unable to find attribute \"" <>
-                                attrName <> "\"."
-            AttrUnparsable t -> "Attribute error: Unable to parse attribute \""
-                                <> attrName <> "\" as type " <> t <> "."
-            AttrOtherError t -> "Attribute error: " <> t
+  where attrError AttrMissing        = "Attribute error: Unable to find attribute \"" <>
+                                       attrName <> "\"."
+        attrError (AttrUnparsable t) = "Attribute error: Unable to parse attribute \""
+                                       <> attrName <> "\" as type " <> t <> "."
+        attrError (AttrOtherError t) = "Attribute error: " <> t
 
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
