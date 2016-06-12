@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE LambdaCase                 #-}
 
 module Larceny where
 
@@ -86,8 +87,8 @@ class FromAttr a where
 instance FromAttr Text where
   readAttr = maybe (Left AttrMissing) Right
 instance FromAttr Int where
-  readAttr = maybe (Left AttrMissing) $
-    maybe (Left AttrUnparsable "Int") Right . readMaybe . T.unpack
+  readAttr (Just attr) = maybe (Left AttrUnparsable "Int") Right $ case readMaybe $ T.unpack attr
+  readAttr Nothing = Left AttrMissing
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr = traverse $ readAttr . Just
 
@@ -95,13 +96,12 @@ a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
   k (either (error . T.unpack . attrError) id (readAttr mAttr))
-  where attrError e =
-          case e of
-            AttrMissing      -> "Attribute error: Unable to find attribute \"" <>
-                                attrName <> "\"."
-            AttrUnparsable t -> "Attribute error: Unable to parse attribute \""
-                                <> attrName <> "\" as type " <> t <> "."
-            AttrOtherError t -> "Attribute error: " <> t
+  where attrError = \case
+          AttrMissing      -> "Attribute error: Unable to find attribute \"" <>
+                              attrName <> "\"."
+          AttrUnparsable t -> "Attribute error: Unable to parse attribute \""
+                              <> attrName <> "\" as type " <> t <> "."
+          AttrOtherError t -> "Attribute error: " <> t
 
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
