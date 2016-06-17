@@ -17,6 +17,7 @@ import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import qualified Data.Text.Lazy.IO   as LT
 import           Data.Traversable    (for)
+import           Html                (plainNodes)
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
@@ -113,9 +114,6 @@ fills = M.fromList . map (\(x,y) -> (Blank x, y))
 
 fill :: Substitutions s -> Fill s
 fill m = \_m (pth, Template tpl) l -> tpl pth m l
-
-plainNodes :: HS.HashSet Text
-plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
 parse :: LT.Text -> Template s
 parse t =
