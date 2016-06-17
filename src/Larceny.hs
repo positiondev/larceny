@@ -56,10 +56,10 @@ renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p s
   where rc = defaultRenderContext l
 
 loadTemplates :: FilePath -> Overrides -> IO (Library s)
-loadTemplates path overrides =
+loadTemplates path o =
   do tpls <- getAllTemplates path
      M.fromList <$> mapM (\file -> do content <- LT.readFile (path <> "/" <> file)
-                                      return (mkPath file, parseWithOverrides overrides content))
+                                      return (mkPath file, parseWithOverrides o content))
                          tpls
   where mkPath p = T.splitOn "/" $ T.pack $ dropExtension p
 
@@ -158,7 +158,6 @@ process pth m rc unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
 process pth m rc unbound (n:ns) = do
   let o = overrides rc
       os = overridePlainNodes o
-      l = library rc
   processedNode <-
     case n of
       X.NodeElement (X.Element "apply" atr kids) -> processApply pth m rc atr kids
