@@ -4,6 +4,7 @@ import           Control.DeepSeq     (force)
 import           Control.Exception   (evaluate)
 import           Control.Monad.State (evalStateT, get, modify)
 import           Control.Monad.Trans (liftIO)
+import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
@@ -38,26 +39,32 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
+removeWhitespace :: Text -> Text
+removeWhitespace = T.replace " " ""
+
 shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
-  T.replace " " "" rendered `shouldBe`
-    T.replace " " "" output
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s (defaultRenderContext l)) ()
+  removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
-    T.replace " " "" rendered `shouldBe`
-      T.replace " " "" output
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s (defaultRenderContext l)) ()
+    removeWhitespace rendered `shouldBe` removeWhitespace output
+
+shouldRenderCustom :: (Text, Substitutions (), RenderContext ()) -> Text -> Expectation
+shouldRenderCustom (t', s, rc) output = do
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s rc) ()
+    removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s (defaultRenderContext l)) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
 shouldErrorDef (t', s, l) output = do
-    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
+    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s (defaultRenderContext l)) ()
     (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
 
 spec :: IO ()
@@ -116,7 +123,10 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
-
+    it "should allow overriden Html tags" $ do
+      ("<html><div></div></html>",
+       fills [("div", text "notadivatall")],
+       RenderContext mempty (Overrides mempty (HS.fromList ["div"]))) `shouldRenderCustom` "<html>not a div at all</html>"
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
       ("<bind tag=\"sport\">Roller derby</bind><sport />",
@@ -172,7 +182,7 @@ spec = hspec $ do
             useAttrs ((a"length")
                       (\n t -> do
                           \_m _t _l -> liftIO $ do
-                            t' <- evalStateT (runTemplate t ["default"] mempty mempty) ()
+                            t' <- evalStateT (runTemplate t ["default"] mempty (defaultRenderContext mempty)) ()
                             return $ T.take n t' <> "..."))
       ("<desc length=\"10\">A <adverb /> long description</desc>",
        fills [ ("adverb", text "really")
@@ -229,7 +239,7 @@ descFill =
              (\n e t -> do
                  let ending = maybe "..." id e
                  \_m _t _l -> liftIO $ do
-                   t' <- evalStateT (runTemplate t ["default"] mempty mempty) ()
+                   t' <- evalStateT (runTemplate t ["default"] mempty (defaultRenderContext mempty)) ()
                    return $ T.take n t' <> ending)
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
