@@ -158,7 +158,6 @@ process pth rc unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
   process pth rc {substitutions = (newFills `M.union` m)} unbound ns
 process pth rc unbound (n:ns) = do
   let o = overrides rc
-      m = substitutions rc
       os = overridePlainNodes o
   processedNode <-
     case n of
