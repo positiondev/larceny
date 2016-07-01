@@ -36,6 +36,24 @@ tpl4 = "<body>                     \
 \          </ul>                   \
 \        </body>"
 
+subst :: Substitutions ()
+subst = subs [ ("site-title", text "Gotham Girls roster")
+             , ("name", text "Gotham Girls")
+             , ("skater", fill $ subs [("name", text "Amy Roundhouse")])
+             , ("skaters", mapSubs
+                          (\(n, p) -> subs [("name", text n)
+                                           ,("position", text p)])
+                          [ ("Bonnie Thunders", "jammer")
+                          , ("Donna Matrix", "blocker")
+                          , ("V-Diva", "jammer") ] )
+              , ("desc", useAttrs ((a"length" %
+                                    a"text")
+                                   (\n d -> text $ T.take n d <> "...")))
+              , ("clients", clientFill) ]
+
+tplLib :: Library ()
+tplLib = M.fromList [(["skater"], parse "Beyonslay")]
+
 tpl5 :: Text
 tpl5 = "<desc length=\"10\" text=\"A really long description\" />"
 
@@ -177,33 +195,15 @@ tpl6 = "<!doctype html>\n\
         \\n\
         \</html>"
 
-subst :: Substitutions ()
-subst = fills [ ("site-title", text "Gotham Girls roster")
-              , ("name", text "Gotham Girls")
-              , ("skater", fill $ fills [("name", text "Amy Roundhouse")])
-              , ("skaters", mapFills
-                          (\(n, p) -> fills [("name", text n)
-                                            ,("position", text p)])
-                          [ ("Bonnie Thunders", "jammer")
-                          , ("Donna Matrix", "blocker")
-                          , ("V-Diva", "jammer") ] )
-              , ("desc", useAttrs ((a"length" %
-                                    a"text")
-                                   (\n d _t -> text $ T.take n d <> "...")))
-              , ("clients", clientFills) ]
-
-tplLib :: Library ()
-tplLib = M.fromList [(["skater"], parse "Beyonslay")]
-
 data Client = Client { clientName :: Text
                      , clientUrl  :: Text
                      , clientLogo :: Text } deriving (Eq, Show)
 
-clientFills :: Fill ()
-clientFills = mapFills (\(Client name url logo) ->
-                          fills [ ("client-name", text name)
-                                , ("client-url", text url)
-                                , ("client-logo", text logo)]) clients
+clientFill :: Fill ()
+clientFill = mapSubs (\(Client name url logo) ->
+                          subs [ ("client-name", text name)
+                               , ("client-url", text url)
+                               , ("client-logo", text logo)]) clients
 
 clients :: [Client]
 clients = [Client "Seven Stories Press"

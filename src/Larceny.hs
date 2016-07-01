@@ -72,9 +72,9 @@ add mouter tpl =
 text :: Text -> Fill s
 text t = \_m _t _l -> return t
 
-useAttrs :: (AttrArgs -> Template s -> Fill s) -> Fill s
+useAttrs :: (AttrArgs -> Fill s) -> Fill s
 useAttrs f = \atrs (pth, tpl) lib ->
-     f atrs tpl atrs (pth, tpl) lib
+     f atrs atrs (pth, tpl) lib
 
 data AttrError = AttrMissing
                | AttrUnparsable Text
@@ -104,12 +104,12 @@ a attrName k attrs =
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
-mapFills :: (a -> Substitutions s) -> [a] -> Fill s
-mapFills f xs = \_m (pth, tpl) lib ->
+mapSubs :: (a -> Substitutions s) -> [a] -> Fill s
+mapSubs f xs = \_m (pth, tpl) lib ->
     T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
-fills :: [(Text, Fill s)] -> Substitutions s
-fills = M.fromList . map (\(x,y) -> (Blank x, y))
+subs :: [(Text, Fill s)] -> Substitutions s
+subs = M.fromList . map (\(x,y) -> (Blank x, y))
 
 fill :: Substitutions s -> Fill s
 fill m = \_m (pth, Template tpl) l -> tpl pth m l
@@ -138,8 +138,8 @@ process :: Path -> Substitutions s -> Library s -> [Text] -> [X.Node] -> StateT 
 process _ _ _ _ [] = return []
 process pth m l unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
   let tagName = atr M.! "tag"
-      newFills = fills [(tagName, \_a _t _l -> runTemplate (mk kids) pth m l)] in
-  process pth (newFills `M.union` m) l unbound ns
+      newSubs = subs [(tagName, \_a _t _l -> runTemplate (mk kids) pth m l)] in
+  process pth (newSubs `M.union` m) l unbound ns
 process pth m l unbound (n:ns) = do
   processedNode <-
     case n of
@@ -194,7 +194,7 @@ processApply pth m l atr kids = do
                                     (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
                                     (targetPath, Just tpl) -> (targetPath, tpl)
   contentTpl <- runTemplate (mk kids) pth m l
-  let contentSub = fills [("apply-content",
+  let contentSub = subs [("apply-content",
                         text contentTpl)]
   sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
   where findTemplate [] targetPath = (targetPath, M.lookup targetPath l)
