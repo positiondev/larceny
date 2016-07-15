@@ -18,7 +18,8 @@ import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import qualified Data.Text.Lazy.IO   as LT
 import           Data.Traversable    (for)
-import           System.Directory    (doesDirectoryExist, getDirectoryContents)
+import           System.Directory    (doesDirectoryExist, getDirectoryContents,
+                                      listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
 import           Text.Read           (readMaybe)
@@ -138,7 +139,8 @@ fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
 
 maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
 maybeFillChildrenWith Nothing = textFill ""
-maybeFillChildrenWith (Just s) = fillChildrenWith s
+maybeFillChildrenWith (Just s) = Fill $ \m (pth, Template tpl) l ->
+  tpl pth s l
 
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
 maybeFillChildrenWith' sMSubs = Fill $ \m (pth, Template tpl) l -> do
