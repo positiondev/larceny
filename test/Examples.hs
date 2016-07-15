@@ -37,18 +37,19 @@ tpl4 = "<body>                     \
 \        </body>"
 
 subst :: Substitutions ()
-subst = subs [ ("site-title", text "Gotham Girls roster")
-             , ("name", text "Gotham Girls")
-             , ("skater", fill $ subs [("name", text "Amy Roundhouse")])
+subst = subs [ ("site-title", textFill "Gotham Girls roster")
+             , ("name", textFill "Gotham Girls")
+             , ("skater", fillChildrenWith $ subs [("name", textFill "Amy Roundhouse")])
              , ("skaters", mapSubs
-                          (\(n, p) -> subs [("name", text n)
-                                           ,("position", text p)])
+                          (\(n,p) ->
+                             (subs [("name", textFill n)
+                                   ,("position", textFill p)]))
                           [ ("Bonnie Thunders", "jammer")
                           , ("Donna Matrix", "blocker")
                           , ("V-Diva", "jammer") ] )
               , ("desc", useAttrs ((a"length" %
-                                    a"text")
-                                   (\n d -> text $ T.take n d <> "...")))
+                                    a"L.textFill")
+                                   (\n d -> textFill $ T.take n d <> "...")))
               , ("clients", clientFill) ]
 
 tplLib :: Library ()
@@ -201,9 +202,9 @@ data Client = Client { clientName :: Text
 
 clientFill :: Fill ()
 clientFill = mapSubs (\(Client name url logo) ->
-                          subs [ ("client-name", text name)
-                               , ("client-url", text url)
-                               , ("client-logo", text logo)]) clients
+                          subs [ ("client-name", textFill name)
+                               , ("client-url", textFill url)
+                               , ("client-logo", textFill logo)]) clients
 
 clients :: [Client]
 clients = [Client "Seven Stories Press"
