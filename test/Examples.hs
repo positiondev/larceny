@@ -2,11 +2,13 @@
 
 module Examples where
 
-import qualified Data.Map       as M
-import           Data.Monoid    ((<>))
-import           Data.Text      (Text)
-import qualified Data.Text      as T
-import qualified Data.Text.Lazy as LT
+import           Control.Monad.State (evalStateT)
+import           Control.Monad.Trans (liftIO)
+import qualified Data.Map            as M
+import           Data.Monoid         ((<>))
+import           Data.Text           (Text)
+import qualified Data.Text           as T
+import qualified Data.Text.Lazy      as LT
 import           Larceny
 
 tpl1 :: Text
@@ -19,21 +21,26 @@ tpl3 :: Text
 tpl3 = "<apply template=\"skater\" />"
 
 tpl4 :: Text
-tpl4 = "<body>                     \
-\          <bind tag=\"sport\">    \
-\            Roller Derby          \
-\          </bind>                 \
-\          <h1>                    \
-\            <name/> <sport/>      \
-\          </h1>                   \
-\          <ul>                    \
-\            <skaters>             \
-\              <li>                \
-\                <h2><name/></h2>  \
-\                <p><position/></p>\
-\              </li>               \
-\            </skaters>            \
-\          </ul>                   \
+tpl4 = "<body>                             \
+\          <bind tag=\"sport\">            \
+\            Roller Derby                  \
+\          </bind>                         \
+\          <h1>                            \
+\            <name/> <sport/>              \
+\          </h1>                           \
+\          <ul>                            \
+\            <skaters>                     \
+\              <li>                        \
+\                <h2><name/></h2>          \
+\                <p><position/></p>        \
+\                <p>                       \
+\                  <shorten length=\"13\"> \
+\                    <longBio />           \
+\                  </shorten>              \
+\                </p>                      \
+\              </li>                       \
+\            </skaters>                    \
+\          </ul>                           \
 \        </body>"
 
 subst :: Substitutions ()
@@ -41,16 +48,25 @@ subst = subs [ ("site-title", textFill "Gotham Girls roster")
              , ("name", textFill "Gotham Girls")
              , ("skater", fillChildrenWith $ subs [("name", textFill "Amy Roundhouse")])
              , ("skaters", mapSubs
-                          (\(n,p) ->
+                          (\(n,p,b) ->
                              (subs [("name", textFill n)
-                                   ,("position", textFill p)]))
-                          [ ("Bonnie Thunders", "jammer")
-                          , ("Donna Matrix", "blocker")
-                          , ("V-Diva", "jammer") ] )
-              , ("desc", useAttrs ((a"length" %
-                                    a"L.textFill")
-                                   (\n d -> textFill $ T.take n d <> "...")))
-              , ("clients", clientFill) ]
+                                   ,("position", textFill p)
+                                   ,("longBio", textFill b)]))
+                          [ ("Bonnie Thunders", "jammer", longBio)
+                          , ("Donna Matrix", "blocker", longBio)
+                          , ("V-Diva", "jammer", longBio) ] )
+             , ("shorten",  useAttrs $ a"length" (modifyInnerText . shorten))
+             , ("clients", clientFill) ]
+        where longBio = "A really long biography of the skater."
+              shorten :: Int -> Text -> Text
+              shorten n t = T.take n (T.strip t) <> "..."
+
+modifyInnerText :: (Text -> Text) -> Fill ()
+modifyInnerText f = Fill $
+  \_attrs (_pth, tpl) _l ->
+    liftIO $ do
+      t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+      return $ f t'
 
 tplLib :: Library ()
 tplLib = M.fromList [(["skater"], parse "Beyonslay")]
