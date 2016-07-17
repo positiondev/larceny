@@ -5,7 +5,6 @@ module Larceny where
 
 import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
-import           Control.Monad.Trans (MonadIO, liftIO)
 import           Data.Hashable       (Hashable)
 import qualified Data.HashSet        as HS
 import           Data.Map            (Map)
@@ -18,8 +17,7 @@ import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import qualified Data.Text.Lazy.IO   as LT
 import           Data.Traversable    (for)
-import           System.Directory    (doesDirectoryExist, getDirectoryContents,
-                                      listDirectory)
+import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
 import           Text.Read           (readMaybe)
@@ -139,11 +137,11 @@ fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
 
 maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
 maybeFillChildrenWith Nothing = textFill ""
-maybeFillChildrenWith (Just s) = Fill $ \m (pth, Template tpl) l ->
+maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
   tpl pth s l
 
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
-maybeFillChildrenWith' sMSubs = Fill $ \m (pth, Template tpl) l -> do
+maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
   mSubs <- sMSubs
   case mSubs of
     Nothing -> return ""

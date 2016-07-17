@@ -26,14 +26,17 @@ tpl4Output = "\
 \            <li>                       \
 \              <h2>Bonnie Thunders</h2> \
 \              <p>jammer</p>            \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \            <li>                       \
 \              <h2>Donna Matrix</h2>    \
 \              <p>blocker</p>           \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \            <li>                       \
 \              <h2>V-Diva</h2>          \
 \              <p>jammer</p>            \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \          </ul>                        \
 \        </body>"
