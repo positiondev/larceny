@@ -26,34 +26,29 @@ import qualified Text.XML            as X
 
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 type AttrArgs = Map Text Text
-type Fill s = AttrArgs -> (Path, Template s) -> RenderContext s -> StateT s IO Text
+newtype Fill s = Fill { unFill :: AttrArgs
+                               -> (Path, Template s)
+                               -> Library s
+                               -> StateT s IO Text }
 type Substitutions s = Map Blank (Fill s)
 type Path = [Text]
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
-                                            -> RenderContext s
+                                            -> Library s
                                             -> StateT s IO Text }
 type Library s = Map Path (Template s)
 
-data Overrides = Overrides { customPlainNodes :: HS.HashSet Text
+data Overrides = Overrides { customPlainNodes   :: HS.HashSet Text
                            , overridePlainNodes :: HS.HashSet Text}
 
 defaultOverrides :: Overrides
 defaultOverrides = Overrides mempty mempty
 
-data RenderContext s = RenderContext { library :: Library s
-                                     , overrides :: Overrides }
-
-defaultRenderContext :: Library s -> RenderContext s
-defaultRenderContext l = RenderContext l defaultOverrides
-
-
 render :: Library s -> s -> Path -> IO (Maybe Text)
 render l = renderWith l mempty
 
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
-renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub rc) s
-  where rc = defaultRenderContext l
+renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub l) s
 
 loadTemplates :: FilePath -> Overrides -> IO (Library s)
 loadTemplates path overrides =
@@ -84,12 +79,15 @@ add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
-text :: Text -> Fill s
-text t = \_m _t _l -> return t
+textFill :: Text -> Fill s
+textFill t = textFill' (return t)
 
-useAttrs :: (AttrArgs -> Template s -> Fill s) -> Fill s
-useAttrs f = \atrs (pth, tpl) lib ->
-     f atrs tpl atrs (pth, tpl) lib
+textFill' :: StateT s IO Text -> Fill s
+textFill' t = Fill $ \_m _t _l -> t
+
+useAttrs :: (AttrArgs -> Fill s) -> Fill s
+useAttrs f = Fill $ \atrs (pth, tpl) lib ->
+     unFill (f atrs) atrs (pth, tpl) lib
 
 data AttrError = AttrMissing
                | AttrUnparsable Text
@@ -119,15 +117,42 @@ a attrName k attrs =
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
 
-mapFills :: (a -> Substitutions s) -> [a] -> Fill s
-mapFills f xs = \_m (pth, tpl) lib ->
+mapSubs :: (a -> Substitutions s)
+        -> [a]
+        -> Fill s
+mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
     T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
-fills :: [(Text, Fill s)] -> Substitutions s
-fills = M.fromList . map (\(x,y) -> (Blank x, y))
+mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
+mapSubs' f xs = Fill $
+  \_m (pth, tpl) lib ->
+    T.concat <$>  mapM (\x -> do
+                           s' <- f x
+                           runTemplate tpl pth s' lib) xs
 
-fill :: Substitutions s -> Fill s
-fill m = \_m (pth, Template tpl) l -> tpl pth m l
+subs :: [(Text, Fill s)] -> Substitutions s
+subs = M.fromList . map (\(x, y) -> (Blank x, y))
+
+fillChildren :: Fill s
+fillChildren = fillChildrenWith mempty
+
+fillChildrenWith :: Substitutions s -> Fill s
+fillChildrenWith m = maybeFillChildrenWith (Just m)
+
+fillChildrenWith' :: StateT s IO (Substitutions s) -> Fill s
+fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
+
+maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
+maybeFillChildrenWith Nothing = textFill ""
+maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
+  tpl pth s l
+
+maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
+maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
+  mSubs <- sMSubs
+  case mSubs of
+    Nothing -> return ""
+    Just s  -> tpl pth s l
 
 parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
@@ -139,9 +164,9 @@ parse = parseWithOverrides defaultOverrides
 
 mk :: Overrides -> [X.Node] -> Template s
 mk o nodes = let unbound = findUnbound o nodes
-           in Template $ \pth m rc ->
+           in Template $ \pth m l ->
                 need pth m (map Blank unbound) <$>
-                (T.concat <$> process pth m rc unbound nodes)
+                (T.concat <$> process pth m l o unbound nodes)
 
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m =
@@ -149,37 +174,51 @@ fillIn tn m =
      (error $ "Missing fill for blank: \"" <> T.unpack tn <> "\"")
      (M.lookup (Blank tn) m)
 
-process :: Path -> Substitutions s -> RenderContext s -> [Text] -> [X.Node] -> StateT s IO [Text]
-process _ _ _ _ [] = return []
-process pth m rc unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
+process :: Path ->
+           Substitutions s ->
+           Library s ->
+           Overrides ->
+           [Text] ->
+           [X.Node] ->
+           StateT s IO [Text]
+process _ _ _ _ _ [] = return []
+process pth m l o unbound (X.NodeElement (X.Element "bind" atr kids):ns) =
   let tagName = atr M.! "tag"
-      newFills = fills [(tagName, \_a _t _l -> runTemplate (mk (overrides rc) kids) pth m rc)] in
-  process pth (newFills `M.union` m) rc unbound ns
-process pth m rc unbound (n:ns) = do
-  let o = overrides rc
-      os = overridePlainNodes o
-      l = library rc
+      newSubs = subs [(tagName, Fill $ \_a _t _l -> runTemplate (mk o kids) pth m l)] in
+  process pth (newSubs `M.union` m) l o unbound ns
+process pth m l o unbound (n:ns) = do
   processedNode <-
     case n of
-      X.NodeElement (X.Element "apply" atr kids) -> processApply pth m rc atr kids
-      X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) os
-                                                 -> processFancy pth m rc tn atr kids
-      X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) plainNodes
-                                                 -> processPlain pth m rc unbound tn atr kids
-      X.NodeElement (X.Element tn atr kids)      -> processFancy pth m rc tn atr kids
+      X.NodeElement (X.Element "apply" atr kids) -> processApply pth m l o atr kids
+      X.NodeElement (X.Element tn atr kids) | isPlain tn o
+                                                 -> processPlain pth m l o unbound tn atr kids
+      X.NodeElement (X.Element tn atr kids)      -> processFancy pth m l o tn atr kids
       X.NodeContent t                            -> return [t]
       X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
       X.NodeInstruction _                        -> return []
-  restOfNodes <- process pth m rc unbound ns
+  restOfNodes <- process pth m l o unbound ns
   return $ processedNode ++ restOfNodes
+
+isPlain :: X.Name -> Overrides -> Bool
+isPlain tn os =
+  let allPlainNodes = (customPlainNodes os `HS.union` plainNodes)
+                      `HS.difference` overridePlainNodes os in
+  HS.member (X.nameLocalName tn) allPlainNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: Path -> Substitutions s -> RenderContext s -> [Text] ->
-                 X.Name -> Map X.Name Text -> [X.Node] -> StateT s IO [Text]
-processPlain pth m rc unbound tn atr kids = do
+processPlain :: Path ->
+                Substitutions s ->
+                Library s ->
+                Overrides ->
+                [Text] ->
+                X.Name ->
+                Map X.Name Text ->
+                [X.Node] ->
+                StateT s IO [Text]
+processPlain pth m l o unbound tn atr kids = do
   atrs <- attrsToText atr
-  processed <- process pth m rc unbound kids
+  processed <- process pth m l o unbound kids
   let tagName = X.nameLocalName tn
   return $ ["<" <> tagName <> atrs <> ">"]
            ++ processed
@@ -188,37 +227,49 @@ processPlain pth m rc unbound tn atr kids = do
         attrToText (k,v) =
           let name = X.nameLocalName k in
           case mUnboundAttr (k,v) of
-            Just hole -> do filledIn <- fillIn hole m mempty ([], (mk (overrides rc) [])) rc
+            Just hole -> do filledIn <- unFill (fillIn hole m) mempty ([], mk o []) l
                             return $ " " <> name <> "=\"" <> filledIn  <> "\""
             Nothing   -> return $ " " <> name <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: Path -> Substitutions s -> RenderContext s ->
-                X.Name -> Map X.Name Text -> [X.Node] -> StateT s IO [Text]
-processFancy pth m rc tn atr kids =
+processFancy :: Path ->
+                Substitutions s ->
+                Library s ->
+                Overrides ->
+                X.Name ->
+                Map X.Name Text ->
+                [X.Node] ->
+                StateT s IO [Text]
+processFancy pth m l o tn atr kids =
   let tagName = X.nameLocalName tn in
-  sequence [ fillIn tagName m (M.mapKeys X.nameLocalName atr) (pth, add m (mk (overrides rc) kids)) rc]
+  sequence [ unFill (fillIn tagName m)
+                    (M.mapKeys X.nameLocalName atr)
+                    (pth, add m (mk o kids)) l]
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library. Phew.
-processApply :: Path -> Substitutions s -> RenderContext s ->
-                 Map X.Name Text -> [X.Node] -> StateT s IO [Text]
-processApply pth m rc atr kids = do
+processApply :: Path ->
+                Substitutions s ->
+                Library s ->
+                Overrides ->
+                Map X.Name Text ->
+                [X.Node] ->
+                StateT s IO [Text]
+processApply pth m l o atr kids = do
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
                                           (M.lookup "template" atr)
   let (absolutePath, tplToApply) = case findTemplate (init pth) tplPath of
                                     (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
                                     (targetPath, Just tpl) -> (targetPath, tpl)
-  contentTpl <- runTemplate (mk (overrides rc) kids) pth m rc
-  let contentSub = fills [("apply-content",
-                        text contentTpl)]
-  sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) rc ]
-  where l = library rc
-        findTemplate [] targetPath = (targetPath, M.lookup targetPath l)
+  contentTpl <- runTemplate (mk o kids) pth m l
+  let contentSub = subs [("apply-content",
+                        textFill contentTpl)]
+  sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+  where findTemplate [] targetPath = (targetPath, M.lookup targetPath l)
         findTemplate pth' targetPath =
           case M.lookup (pth' ++ targetPath) l of
             Just tpl -> (pth' ++ targetPath, Just tpl)
@@ -229,11 +280,8 @@ findUnbound _ [] = []
 findUnbound o (X.NodeElement (X.Element name atr kids):ns) =
      let os = overridePlainNodes o
          tn = X.nameLocalName name in
-     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
-     then
-       if HS.member tn os
-       then tn : findUnboundAttrs atr ++ findUnbound o ns
-       else findUnboundAttrs atr ++ findUnbound o kids
+     if tn == "apply" || tn == "bind" || isPlain name o
+     then findUnboundAttrs atr ++ findUnbound o kids
      else tn : findUnboundAttrs atr ++ findUnbound o ns
 findUnbound o (_:ns) = findUnbound o ns
 

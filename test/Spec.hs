@@ -27,14 +27,17 @@ tpl4Output = "\
 \            <li>                       \
 \              <h2>Bonnie Thunders</h2> \
 \              <p>jammer</p>            \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \            <li>                       \
 \              <h2>Donna Matrix</h2>    \
 \              <p>blocker</p>           \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \            <li>                       \
 \              <h2>V-Diva</h2>          \
 \              <p>jammer</p>            \
+\              <p>A really long...</p>  \
 \            </li>                      \
 \          </ul>                        \
 \        </body>"
@@ -44,27 +47,27 @@ removeWhitespace = T.replace " " ""
 
 shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s (defaultRenderContext l)) ()
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
   removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s (defaultRenderContext l)) ()
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     removeWhitespace rendered `shouldBe` removeWhitespace output
 
-shouldRenderCustom :: (Text, Substitutions (), RenderContext ()) -> Text -> Expectation
-shouldRenderCustom (t', s, rc) output = do
-    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s rc) ()
+shouldRenderCustom :: (Text, Substitutions (), Library (), Overrides) -> Text -> Expectation
+shouldRenderCustom (t', s, l, o) output = do
+    rendered <- evalStateT (runTemplate (parseWithOverrides o (LT.fromStrict t')) ["default"] s l) ()
     removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s (defaultRenderContext l)) ()
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
 shouldErrorDef (t', s, l) output = do
-    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s (defaultRenderContext l)) ()
+    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
 
 spec :: IO ()
@@ -85,7 +88,7 @@ spec = hspec $ do
        M.fromList [(["hello"], parse "hello")]) `shouldRenderDef` "hello"
     it "should allow templates with unfilled holes to be included in other templates" $ do
       ("<apply template=\"skater\" />",
-       fills [("alias", text "Fifi Nomenom")],
+       subs [("alias", textFill "Fifi Nomenom")],
        M.fromList [(["skater"], parse "<alias />")]) `shouldRenderDef` "Fifi Nomenom"
     it "should allow templates to be included in other templates" $ do
       ("<apply template=\"skater\">V-Diva</apply>",
@@ -93,7 +96,7 @@ spec = hspec $ do
        M.fromList [(["skater"], parse "<apply-content />")]) `shouldRenderDef` "V-Diva"
     it "should allow compicated templates to be included in other templates" $ do
       ("<apply template=\"_base\"><p>The Smacktivist</p></apply>",
-       fills [("siteTitle", text "Ohio Roller Girls")],
+       subs [("siteTitle", textFill "Ohio Roller Girls")],
        M.fromList [(["_base"], parse "<h1><siteTitle /></h1>\
                                             \<apply-content />")])
         `shouldRenderDef` "<h1>Ohio Roller Girls</h1>\
@@ -123,10 +126,25 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
+
+  describe "overriding HTML tags" $ do
     it "should allow overriden Html tags" $ do
       ("<html><div></div></html>",
-       fills [("div", text "notadivatall")],
-       RenderContext mempty (Overrides mempty (HS.fromList ["div"]))) `shouldRenderCustom` "<html>not a div at all</html>"
+       subs [("div", textFill "notadivatall")],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should allow (nested) overriden Html tags" $ do
+      ("<html><custom><div></div></custom></html>",
+       subs [("div", textFill "notadivatall")
+            ,("custom", fillChildrenWith mempty)],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should not need fills for manually added plain nodes" $ do
+      ("<html><blink>retro!!</blink></html>",
+       mempty,
+       mempty,
+       Overrides (HS.fromList ["blink"]) mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
+
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
       ("<bind tag=\"sport\">Roller derby</bind><sport />",
@@ -138,77 +156,81 @@ spec = hspec $ do
         mempty) `shouldRenderDef` "Roller derby is awesome"
     it "should let you bind with nested blanks" $ do
       ("<bind tag=\"sport\">Roller derby is <adjective /></bind><sport />",
-        fills [("adjective", text "awesome")],
+        subs [("adjective", textFill "awesome")],
         mempty) `shouldRenderDef` "Roller derby is awesome"
 
-  describe "mapFills" $ do
-    it "should map the fills over a list" $ do
+  describe "mapSubs" $ do
+    it "should map the subs over a list" $ do
+      (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
+    it "should map the subs over a list" $ do
       (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
 
   describe "writing functions" $ do
     it "should allow you to write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
-                               "A really long description"
-                               <> "...")],
+       subs [("desc", Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
+                                         "A really long description"
+                                         <> "...")],
         mempty) `shouldRenderDef` "A really l..."
 
 
     it "should allow you to use IO in fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
-                                      return $ T.take (read $ T.unpack (m M.! "length"))
-                                               "A really long description"
-                                               <> "...")],
+       subs [("desc", Fill $
+                        \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
+                                       return $ T.take (read $ T.unpack (m M.! "length"))
+                                         "A really long description"
+                                         <> "...")],
         mempty) `shouldRenderDef` "A really l..."
 
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
+       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       fills [("desc", useAttrs ((a"length" %
+       subs [("desc", useAttrs ((a"length" %
                                   a"text")
-                                 (\n d _t -> text $ T.take n d <> "...")))],
+                                 (\n d -> textFill $ T.take n d <> "...")))],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use child elements" $ do
+      --- whoa, this is kinda terrible
       let descTplFill =
             useAttrs ((a"length")
-                      (\n t -> do
-                          \_m _t _l -> liftIO $ do
-                            t' <- evalStateT (runTemplate t ["default"] mempty (defaultRenderContext mempty)) ()
-                            return $ T.take n t' <> "..."))
+                      (\n -> do Fill $ \_attrs (_pth, tpl) _l ->
+                                  liftIO $ do
+                                  t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+                                  return $ T.take n t' <> "..."))
       ("<desc length=\"10\">A <adverb /> long description</desc>",
-       fills [ ("adverb", text "really")
+       subs [ ("adverb", textFill "really")
              , ("desc", descTplFill)],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow optional attributes by giving a Maybe type (not using the optional)" $ do
       ("<desc length=\"10\">A really long description</desc>",
-       fills [("desc", descFill)],
+       subs [("desc", descFill)],
        mempty) `shouldRenderDef` "A really l..."
 
     it "should allow optional attributes by giving a Maybe type (using optional)" $ do
       ("<desc length=\"10\" ending=\" and such \">A really long description</desc>",
-       fills [("desc", descFill)],
+       subs [("desc", descFill)],
        mempty) `shouldRenderDef` "A really l and such"
 
     it "should give a nice error message if attribute is missing" $ do
       ("<desc />",
-       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
+       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldErrorDef` "Attribute error: Unable to find attribute \"length\"."
 
     it "should give a nice error message if attribute is unparsable" $ do
       ("<desc length=\"infinite\" />",
-       fills [("desc", useAttrs (a"length" (\n _t -> text $ T.take n
+       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
                                             "A really long description"
                                             <> "...")))],
         mempty) `shouldErrorDef` "Attribute error: Unable to parse attribute \"length\" as type Int."
@@ -216,7 +238,7 @@ spec = hspec $ do
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
       ("<p id=\"${skater}\"><skater /></p>",
-       fills [("skater", text "Beyonslay")],
+       subs [("skater", textFill "Beyonslay")],
        mempty) `shouldRenderDef` "<p id=\"Beyonslay\">Beyonslay</p>"
 
   describe "a large HTML file" $ do
@@ -226,20 +248,24 @@ spec = hspec $ do
   describe "statefulness" $ do
     it "a fill should be able to affect subsequent fills" $ do
        renderWith (M.fromList [(["default"], parse "<x/><x/>")])
-                  (fills [("x", \_ _ _ -> do modify ((+1) :: Int -> Int)
-                                             s <- get
-                                             return (T.pack (show s)))])
+                  (subs [("x", Fill $ \_ _ _ ->
+                                        do modify ((+1) :: Int -> Int)
+                                           s <- get
+                                           return (T.pack (show s)))])
                   0
                   ["default"]
        `shouldReturn` Just "12"
 
 descFill :: Fill ()
 descFill =
-  useAttrs $ (a"length" % a"ending")
-             (\n e t -> do
-                 let ending = maybe "..." id e
-                 \_m _t _l -> liftIO $ do
-                   t' <- evalStateT (runTemplate t ["default"] mempty (defaultRenderContext mempty)) ()
-                   return $ T.take n t' <> ending)
+  useAttrs $ (a"length" % a"ending") descFunc
+
+descFunc :: Int -> Maybe Text -> Fill ()
+descFunc n e = Fill $
+  do
+    let ending = maybe "..." id e
+    \_attrs (_pth, tpl) _l -> liftIO $ do
+      renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+      return $ T.take n renderedText <> ending
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

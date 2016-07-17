@@ -28,7 +28,7 @@ library
                      , hspec >=2.2 && <2.3
                      , html-conduit
                      , xml-conduit
-                     , directory
+                     , directory >= 1.2.5
                      , filepath
                      , mtl
   hs-source-dirs:      src
@@ -46,7 +46,7 @@ test-suite test
                      , hspec >=2.2 && <2.3
                      , larceny
                      , unordered-containers
-                     , directory
+                     , directory >= 1.2.5
                      , filepath
                      , deepseq
                      , mtl
@@ -73,7 +73,7 @@ benchmark bench
                      , either
                      , bytestring
                      , mtl
-                     , directory
+                     , directory >= 1.2.5
                      , filepath
   hs-source-dirs:      test
   default-language:    Haskell2010
