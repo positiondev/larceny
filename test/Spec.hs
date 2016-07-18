@@ -47,27 +47,27 @@ removeWhitespace = T.replace " " ""
 
 shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth (defaultRenderContext l s)) ()
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
   removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
-    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] (defaultRenderContext l s)) ()
+    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     removeWhitespace rendered `shouldBe` removeWhitespace output
 
-shouldRenderCustom :: (Text, RenderContext ()) -> Text -> Expectation
-shouldRenderCustom (t', rc) output = do
-    rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] rc) ()
+shouldRenderCustom :: (Text, Substitutions (), Library (), Overrides) -> Text -> Expectation
+shouldRenderCustom (t', s, l, o) output = do
+    rendered <- evalStateT (runTemplate (parseWithOverrides o (LT.fromStrict t')) ["default"] s l) ()
     removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
-  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth (defaultRenderContext l s)) ()
+  rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
 shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
 shouldErrorDef (t', s, l) output = do
-    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] (defaultRenderContext l s )) ()
+    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
     (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
 
 spec :: IO ()
@@ -126,9 +126,25 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
+
+  describe "overriding HTML tags" $ do
     it "should allow overriden Html tags" $ do
       ("<html><div></div></html>",
-       RenderContext mempty (Overrides mempty (HS.fromList ["div"])) (fills [("div", text "notadivatall")])) `shouldRenderCustom` "<html>not a div at all</html>"
+       subs [("div", textFill "notadivatall")],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should allow (nested) overriden Html tags" $ do
+      ("<html><custom><div></div></custom></html>",
+       subs [("div", textFill "notadivatall")
+            ,("custom", fillChildrenWith mempty)],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should not need fills for manually added plain nodes" $ do
+      ("<html><blink>retro!!</blink></html>",
+       mempty,
+       mempty,
+       Overrides (HS.fromList ["blink"]) mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
+
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
       ("<bind tag=\"sport\">Roller derby</bind><sport />",
@@ -241,7 +257,8 @@ spec = hspec $ do
        `shouldReturn` Just "12"
 
 descFill :: Fill ()
-descFill = useAttrs $ (a"length" % a"ending") descFunc
+descFill =
+  useAttrs $ (a"length" % a"ending") descFunc
 
 descFunc :: Int -> Maybe Text -> Fill ()
 descFunc n e = Fill $
