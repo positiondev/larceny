@@ -9,7 +9,7 @@ import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
-import           Larceny
+import           Web.Larceny
 
 tpl1 :: Text
 tpl1 = "<h1>Hello</h1>"

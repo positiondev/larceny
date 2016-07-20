@@ -1,13 +1,13 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
-module Html where
+module Web.Larceny.Html where
 
-import           Data.Text           (Text)
-import qualified Data.HashSet        as HS
+import qualified Data.HashSet as HS
+import           Data.Text    (Text)
 
 -- retrieved from: https://www.w3.org/TR/html-markup/elements-by-function.html
-plainNodes :: HS.HashSet Text
-plainNodes = HS.fromList [
+html5Nodes :: HS.HashSet Text
+html5Nodes = HS.fromList [
 
 -- 5.1. The root element
 
@@ -148,4 +148,3 @@ plainNodes = HS.fromList [
     "summary", -- summary, caption, or legend for a details control NEW
     "command", -- command NEW
     "menu"] -- list of commands CHANGED
-
