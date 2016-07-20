@@ -4,6 +4,7 @@ import           Control.DeepSeq     (force)
 import           Control.Exception   (evaluate)
 import           Control.Monad.State (evalStateT, get, modify)
 import           Control.Monad.Trans (liftIO)
+import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
@@ -41,17 +42,23 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
+removeWhitespace :: Text -> Text
+removeWhitespace = T.replace " " ""
+
 shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
   rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
-  T.replace " " "" rendered `shouldBe`
-    T.replace " " "" output
+  removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
     rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
-    T.replace " " "" rendered `shouldBe`
-      T.replace " " "" output
+    removeWhitespace rendered `shouldBe` removeWhitespace output
+
+shouldRenderCustom :: (Text, Substitutions (), Library (), Overrides) -> Text -> Expectation
+shouldRenderCustom (t', s, l, o) output = do
+    rendered <- evalStateT (runTemplate (parseWithOverrides o (LT.fromStrict t')) ["default"] s l) ()
+    removeWhitespace rendered `shouldBe` removeWhitespace output
 
 shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
@@ -119,6 +126,24 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
+
+  describe "overriding HTML tags" $ do
+    it "should allow overriden Html tags" $ do
+      ("<html><div></div></html>",
+       subs [("div", textFill "notadivatall")],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should allow (nested) overriden Html tags" $ do
+      ("<html><custom><div></div></custom></html>",
+       subs [("div", textFill "notadivatall")
+            ,("custom", fillChildrenWith mempty)],
+       mempty,
+       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+    it "should not need fills for manually added plain nodes" $ do
+      ("<html><blink>retro!!</blink></html>",
+       mempty,
+       mempty,
+       Overrides (HS.fromList ["blink"]) mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
 
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
