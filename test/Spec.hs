@@ -10,8 +10,8 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import           Examples
-import           Larceny
 import           Test.Hspec
+import           Web.Larceny
 
 main :: IO ()
 main = spec

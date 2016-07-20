@@ -17,7 +17,7 @@ build-type:          Simple
 cabal-version:       >=1.10
 
 library
-  exposed-modules:     Larceny
+  exposed-modules:     Web.Larceny
   -- other-modules:
   other-extensions:    OverloadedStrings
   build-depends:       base >=4.8 && <4.9

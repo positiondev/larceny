@@ -1,7 +1,30 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
-module Larceny where
+module Web.Larceny ( Blank
+                   , Fill(..)
+                   , AttrArgs
+                   , Substitutions
+                   , Template(..)
+                   , Path -- ???
+                   , Library
+                   , render
+                   , renderWith
+                   , loadTemplates
+                   , subs
+                   , textFill
+                   , textFill'
+                   , mapSubs
+                   , mapSubs'
+                   , fillChildren
+                   , fillChildrenWith
+                   , fillChildrenWith'
+                   , maybeFillChildrenWith
+                   , maybeFillChildrenWith'
+                   , useAttrs
+                   , a
+                   , (%)
+                   , parse) where
 
 import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
@@ -23,26 +46,43 @@ import qualified Text.HTML.DOM       as D
 import           Text.Read           (readMaybe)
 import qualified Text.XML            as X
 
+
+-- | The type of a "blank" in the template.
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
-type AttrArgs = Map Text Text
+
+-- | A  Fill is how to fill in a Blank.
 newtype Fill s = Fill { unFill :: AttrArgs
                                -> (Path, Template s)
                                -> Library s
                                -> StateT s IO Text }
+
+-- | Attributes (if the Blank is a tag)
+type AttrArgs = Map Text Text
+
 type Substitutions s = Map Blank (Fill s)
-type Path = [Text]
+
+-- | When you run a template with the path, some substitutions, and the
+-- template library, you'll get back some stateful text.
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
                                             -> Library s
                                             -> StateT s IO Text }
+
+-- | The path to a template.
+type Path = [Text]
+
+-- | A collection of templates.
 type Library s = Map Path (Template s)
 
+-- | Render a template from the library by path.
 render :: Library s -> s -> Path -> IO (Maybe Text)
 render l = renderWith l mempty
 
+-- | Render a template with some extra substitutions.
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
 renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub l) s
 
+-- | Load all the templates in some directory into a Library.
 loadTemplates :: FilePath -> IO (Library s)
 loadTemplates path =
   do tpls <- getAllTemplates path
@@ -60,24 +100,63 @@ getAllTemplates path =
                             return $ map (\p -> dir <> "/" <> p) r) dirs
      return $ tpls ++ concat rs
 
-need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
-need pth m keys rest =
-  let d = S.difference (S.fromList keys) (M.keysSet m)
-  in if S.null d
-     then rest
-     else error $ "Template " <> show pth
-          <> " is missing substitutions for blanks: " <> show d
+-- | Turn tuples of text and fills to substitutions.
+subs :: [(Text, Fill s)] -> Substitutions s
+subs = M.fromList . map (\(x, y) -> (Blank x, y))
 
-add :: Substitutions s -> Template s -> Template s
-add mouter tpl =
-  Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
-
+-- | A plain  text fill.
 textFill :: Text -> Fill s
 textFill t = textFill' (return t)
 
+-- | An `StateT s IO Text` fill.
 textFill' :: StateT s IO Text -> Fill s
 textFill' t = Fill $ \_m _t _l -> t
 
+-- | Create substitutions for each element in a list and use them in the
+-- fill.
+mapSubs :: (a -> Substitutions s)
+        -> [a]
+        -> Fill s
+mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
+    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
+
+-- | Create substitutions for each element in a list and use them in the
+-- fill. using State and IO if you like.
+mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
+mapSubs' f xs = Fill $
+  \_m (pth, tpl) lib ->
+    T.concat <$>  mapM (\x -> do
+                           s' <- f x
+                           runTemplate tpl pth s' lib) xs
+
+-- | Fill in the child nodes of the blank with substitutions already
+-- available.
+fillChildren :: Fill s
+fillChildren = fillChildrenWith mempty
+
+-- | Fill in the child nodes of the blank with new substitutions.
+fillChildrenWith :: Substitutions s -> Fill s
+fillChildrenWith m = maybeFillChildrenWith (Just m)
+
+-- | Use substitutions with State and IO.
+fillChildrenWith' :: StateT s IO (Substitutions s) -> Fill s
+fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
+
+-- | Maybe helper
+maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
+maybeFillChildrenWith Nothing = textFill ""
+maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
+  tpl pth s l
+
+-- | Maybe with State and IO helper
+maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
+maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
+  mSubs <- sMSubs
+  case mSubs of
+    Nothing -> return ""
+    Just s  -> tpl pth s l
+
+-- | Use attributes from the the blank as arguments to the fill.
 useAttrs :: (AttrArgs -> Fill s) -> Fill s
 useAttrs f = Fill $ \atrs (pth, tpl) lib ->
      unFill (f atrs) atrs (pth, tpl) lib
@@ -97,6 +176,7 @@ instance FromAttr Int where
 instance FromAttr a => FromAttr (Maybe a) where
   readAttr = traverse $ readAttr . Just
 
+-- | Prepend to the name of an attribute, e.g. `a "name"`.
 a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
@@ -107,54 +187,20 @@ a attrName k attrs =
                                        <> attrName <> "\" as type " <> t <> "."
         attrError (AttrOtherError t) = "Attribute error: " <> t
 
+-- | Combine attributes to use in the fill.
 (%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
 (%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
-
-mapSubs :: (a -> Substitutions s)
-        -> [a]
-        -> Fill s
-mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
-    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
-
-mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
-mapSubs' f xs = Fill $
-  \_m (pth, tpl) lib ->
-    T.concat <$>  mapM (\x -> do
-                           s' <- f x
-                           runTemplate tpl pth s' lib) xs
-
-subs :: [(Text, Fill s)] -> Substitutions s
-subs = M.fromList . map (\(x, y) -> (Blank x, y))
-
-fillChildren :: Fill s
-fillChildren = fillChildrenWith mempty
-
-fillChildrenWith :: Substitutions s -> Fill s
-fillChildrenWith m = maybeFillChildrenWith (Just m)
-
-fillChildrenWith' :: StateT s IO (Substitutions s) -> Fill s
-fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
-
-maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
-maybeFillChildrenWith Nothing = textFill ""
-maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
-  tpl pth s l
-
-maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
-maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
-  mSubs <- sMSubs
-  case mSubs of
-    Nothing -> return ""
-    Just s  -> tpl pth s l
 
 plainNodes :: HS.HashSet Text
 plainNodes = HS.fromList ["html","body","base","head","link","meta","style","title","address","article","aside","footer","header","h1","h2","h3","h4","h5","h6","nav","dd","div","dl","dt","figcaption","figure","hr","li","main","ol","p","pre","ul","a","abbr","b","bdi","bdo","br","cite","code","data","dfn","em","i","kbd","mark","q","rp","rt","rtc","ruby","s","samp","small","span","strong","sub","sup","time","u","var","wbr","area","img", "audio","map","track","video","embed","object","param","source","canvas","noscript","script","del","ins","caption","col","colgroup","table","tbody","td","tfoot","th","thead","tr","button","datalist","fieldset","form","input","label","legend","meter","optgroup","option","output","progress","select","textarea","details","dialog","menu","menuitem","summary","element","shadow","template","command","keygen","nextid","noembed","xmp"]
 
+-- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
 parse t =
   let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
   in mk nodes
 
+-- | Turn HTML nodes into templates.
 mk :: [X.Node] -> Template s
 mk nodes = let unbound = findUnbound nodes
            in Template $ \pth m l ->
@@ -166,6 +212,19 @@ fillIn tn m =
   fromMaybe
      (error $ "Missing fill for blank: \"" <> T.unpack tn <> "\"")
      (M.lookup (Blank tn) m)
+
+need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
+need pth m keys rest =
+  let d = S.difference (S.fromList keys) (M.keysSet m)
+  in if S.null d
+     then rest
+     else error $ "Template " <> show pth
+          <> " is missing substitutions for blanks: " <> show d
+
+-- | Add more substitutions to a template.
+add :: Substitutions s -> Template s -> Template s
+add mouter tpl =
+  Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
 process :: Path -> Substitutions s -> Library s -> [Text] -> [X.Node] -> StateT s IO [Text]
 process _ _ _ _ [] = return []
