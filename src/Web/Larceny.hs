@@ -24,6 +24,7 @@ module Web.Larceny ( Blank
                    , maybeFillChildrenWith
                    , maybeFillChildrenWith'
                    , useAttrs
+                   , AttrError(..)
                    , a
                    , (%)
                    , parse
