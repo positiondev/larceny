@@ -181,21 +181,21 @@ data AttrError = AttrMissing
                | AttrOtherError Text deriving (Eq, Show)
 
 class FromAttribute a where
-  readAttr :: Maybe Text -> Either AttrError a
+  fromAttribute :: Maybe Text -> Either AttrError a
 
 instance FromAttribute Text where
-  readAttr = maybe (Left AttrMissing) Right
+  fromAttribute = maybe (Left AttrMissing) Right
 instance FromAttribute Int where
-  readAttr (Just attr) = maybe (Left $ AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
-  readAttr Nothing = Left AttrMissing
+  fromAttribute (Just attr) = maybe (Left $ AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
+  fromAttribute Nothing = Left AttrMissing
 instance FromAttribute a => FromAttribute (Maybe a) where
-  readAttr = traverse $ readAttr . Just
+  fromAttribute = traverse $ fromAttribute . Just
 
 -- | Prepend to the name of an attribute, e.g. `a "name"`.
 a :: FromAttribute a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
-  k (either (error . T.unpack . attrError) id (readAttr mAttr))
+  k (either (error . T.unpack . attrError) id (fromAttribute mAttr))
   where attrError AttrMissing        = "Attribute error: Unable to find attribute \"" <>
                                        attrName <> "\"."
         attrError (AttrUnparsable t) = "Attribute error: Unable to parse attribute \""
