@@ -1,7 +1,7 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
-module Web.Larceny ( Blank
+module Web.Larceny ( Blank(..)
                    , Fill(..)
                    , AttrArgs
                    , Substitutions
