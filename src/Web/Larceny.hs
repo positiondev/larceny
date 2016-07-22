@@ -9,6 +9,7 @@ module Web.Larceny ( Blank
                    , Path -- ???
                    , Library
                    , Overrides(..)
+                   , FromAttribute(..)
                    , render
                    , renderWith
                    , loadTemplates
@@ -179,19 +180,19 @@ data AttrError = AttrMissing
                | AttrUnparsable Text
                | AttrOtherError Text deriving (Eq, Show)
 
-class FromAttr a where
+class FromAttribute a where
   readAttr :: Maybe Text -> Either AttrError a
 
-instance FromAttr Text where
+instance FromAttribute Text where
   readAttr = maybe (Left AttrMissing) Right
-instance FromAttr Int where
+instance FromAttribute Int where
   readAttr (Just attr) = maybe (Left $ AttrUnparsable "Int") Right $ readMaybe $ T.unpack attr
   readAttr Nothing = Left AttrMissing
-instance FromAttr a => FromAttr (Maybe a) where
+instance FromAttribute a => FromAttribute (Maybe a) where
   readAttr = traverse $ readAttr . Just
 
 -- | Prepend to the name of an attribute, e.g. `a "name"`.
-a :: FromAttr a => Text -> (a -> b) -> AttrArgs -> b
+a :: FromAttribute a => Text -> (a -> b) -> AttrArgs -> b
 a attrName k attrs =
   let mAttr = M.lookup attrName attrs in
   k (either (error . T.unpack . attrError) id (readAttr mAttr))
