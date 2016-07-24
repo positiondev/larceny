@@ -55,7 +55,8 @@ subst = subs [ ("site-title", textFill "Gotham Girls roster")
                           [ ("Bonnie Thunders", "jammer", longBio)
                           , ("Donna Matrix", "blocker", longBio)
                           , ("V-Diva", "jammer", longBio) ] )
-             , ("shorten",  useAttrs $ a"length" (modifyInnerText . shorten))
+             , ("shorten",  useAttrs (a"length")
+                                     (modifyInnerText . shorten))
              , ("clients", clientFill) ]
         where longBio = "A really long biography of the skater."
               shorten :: Int -> Text -> Text

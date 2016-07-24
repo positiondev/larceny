@@ -186,26 +186,25 @@ spec = hspec $ do
   describe "useAttrs" $ do
     it "should allow you to *easily* write functions for fills" $ do
       ("<desc length=\"10\" />",
-       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
-                                            "A really long description"
-                                            <> "...")))],
+       subs [("desc", useAttrs (a"length")
+                               (\n -> textFill $ T.take n
+                                      "A really long description"
+                                      <> "..."))],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use multiple args" $ do
       ("<desc length=\"10\" text=\"A really long description\" />",
-       subs [("desc", useAttrs ((a"length" %
-                                  a"text")
-                                 (\n d -> textFill $ T.take n d <> "...")))],
+       subs [("desc", useAttrs (a"length" % a"text")
+                               (\n d -> textFill $ T.take n d <> "..."))],
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use child elements" $ do
       --- whoa, this is kinda terrible
       let descTplFill =
-            useAttrs ((a"length")
-                      (\n -> do Fill $ \_attrs (_pth, tpl) _l ->
-                                  liftIO $ do
-                                  t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
-                                  return $ T.take n t' <> "..."))
+            useAttrs (a"length")
+                     (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
+                         t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+                         return $ T.take n t' <> "...")
       ("<desc length=\"10\">A <adverb /> long description</desc>",
        subs [ ("adverb", textFill "really")
              , ("desc", descTplFill)],
@@ -223,16 +222,18 @@ spec = hspec $ do
 
     it "should give a nice error message if attribute is missing" $ do
       ("<desc />",
-       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
-                                            "A really long description"
-                                            <> "...")))],
+       subs [("desc", useAttrs (a"length")
+                               (\n -> textFill $ T.take n
+                                      "A really long description"
+                                      <> "..."))],
         mempty) `shouldErrorDef` "Attribute error: Unable to find attribute \"length\"."
 
     it "should give a nice error message if attribute is unparsable" $ do
       ("<desc length=\"infinite\" />",
-       subs [("desc", useAttrs (a"length" (\n -> textFill $ T.take n
-                                            "A really long description"
-                                            <> "...")))],
+       subs [("desc", useAttrs (a"length")
+                               (\n -> textFill $ T.take n
+                                      "A really long description"
+                                      <> "..."))],
         mempty) `shouldErrorDef` "Attribute error: Unable to parse attribute \"length\" as type Int."
 
   describe "attributes" $ do
@@ -249,16 +250,16 @@ spec = hspec $ do
     it "a fill should be able to affect subsequent fills" $ do
        renderWith (M.fromList [(["default"], parse "<x/><x/>")])
                   (subs [("x", Fill $ \_ _ _ ->
-                                        do modify ((+1) :: Int -> Int)
-                                           s <- get
-                                           return (T.pack (show s)))])
+                                 do modify ((+1) :: Int -> Int)
+                                    s <- get
+                                    return (T.pack (show s)))])
                   0
                   ["default"]
        `shouldReturn` Just "12"
 
 descFill :: Fill ()
 descFill =
-  useAttrs $ (a"length" % a"ending") descFunc
+  useAttrs (a"length" % a"ending") descFunc
 
 descFunc :: Int -> Maybe Text -> Fill ()
 descFunc n e = Fill $

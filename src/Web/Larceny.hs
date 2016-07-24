@@ -173,9 +173,11 @@ maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
     Just s  -> tpl pth s l
 
 -- | Use attributes from the the blank as arguments to the fill.
-useAttrs :: (AttrArgs -> Fill s) -> Fill s
-useAttrs f = Fill $ \atrs (pth, tpl) lib ->
-     unFill (f atrs) atrs (pth, tpl) lib
+useAttrs :: (AttrArgs -> k -> Fill s)
+         ->  k
+         ->  Fill s
+useAttrs k fill= Fill $ \atrs (pth, tpl) lib ->
+     unFill (k atrs fill) atrs (pth, tpl) lib
 
 data AttrError = AttrMissing
                | AttrUnparsable Text
@@ -192,9 +194,9 @@ instance FromAttribute Int where
 instance FromAttribute a => FromAttribute (Maybe a) where
   fromAttribute = traverse $ fromAttribute . Just
 
--- | Prepend to the name of an attribute, e.g. `a "name"`.
-a :: FromAttribute a => Text -> (a -> b) -> AttrArgs -> b
-a attrName k attrs =
+-- | Prepend to the name of an attribute, e.g. `a"name"`.
+a :: FromAttribute a => Text -> AttrArgs -> (a -> b) -> b
+a attrName attrs k =
   let mAttr = M.lookup attrName attrs in
   k (either (error . T.unpack . attrError) id (fromAttribute mAttr))
   where attrError AttrMissing        = "Attribute error: Unable to find attribute \"" <>
@@ -204,8 +206,10 @@ a attrName k attrs =
         attrError (AttrOtherError t) = "Attribute error: " <> t
 
 -- | Combine attributes to use in the fill.
-(%) :: (a -> AttrArgs -> b) -> (b -> AttrArgs -> c) ->  a -> AttrArgs -> c
-(%) f1 f2 fun attrs = f2 (f1 fun attrs) attrs
+(%) :: (AttrArgs -> a -> b)
+    -> (AttrArgs -> b -> c)
+    ->  AttrArgs -> a -> c
+(%) f1 f2 attrs k = f2 attrs (f1 attrs k)
 
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
