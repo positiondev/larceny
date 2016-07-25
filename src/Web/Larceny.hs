@@ -13,6 +13,7 @@ module Web.Larceny ( Blank(..)
                    , render
                    , renderWith
                    , loadTemplates
+                   , defaultOverrides
                    , subs
                    , textFill
                    , textFill'
