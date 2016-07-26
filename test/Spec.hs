@@ -248,6 +248,19 @@ spec = hspec $ do
             ,("name", textFill "Beyonslay")],
        mempty) `shouldRenderDef` "Skater: Beyonslay"
 
+    it "should substitute blanks that are only part of attributes" $ do
+      ("<skater name=\"the great ${name}\"><skater />",
+       subs [("skater", useAttrs (a"name") (\name -> textFill $ "Skater: " <> name))
+            ,("name", textFill "Beyonslay")],
+       mempty) `shouldRenderDef` "Skater: the great Beyonslay"
+
+    it "should substitute multiple blanks in an attribute" $ do
+      ("<skater name=\"the ${adj} ${name}\"><skater />",
+       subs [("skater", useAttrs (a"name") (\name -> textFill $ "Skater: " <> name))
+            ,("name", textFill "Beyonslay")
+            ,("adj", textFill "great")],
+       mempty) `shouldRenderDef` "Skater: the great Beyonslay"
+
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
       (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"

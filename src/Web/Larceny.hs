@@ -33,11 +33,12 @@ module Web.Larceny ( Blank(..)
 
 import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
+import           Data.Either
 import           Data.Hashable       (Hashable)
 import qualified Data.HashSet        as HS
 import           Data.Map            (Map)
 import qualified Data.Map            as M
-import           Data.Maybe          (fromMaybe, mapMaybe)
+import           Data.Maybe          (fromMaybe)
 import           Data.Monoid         ((<>))
 import qualified Data.Set            as S
 import           Data.Text           (Text)
@@ -226,7 +227,7 @@ mk :: Overrides -> [X.Node] -> Template s
 mk o nodes =
   let unbound = findUnbound o nodes in
   Template $ \pth m l ->
-    need pth m (map Blank unbound) <$>
+    need pth m unbound <$>
     (T.concat <$> process (ProcessContext pth m l o unbound nodes))
 
 fillIn :: Text -> Substitutions s -> Fill s
@@ -239,7 +240,7 @@ data ProcessContext s = ProcessContext { _pcPath      :: Path
                                        , _pcSubs      :: Substitutions s
                                        , _pcLib       :: Library s
                                        , _pcOverrides :: Overrides
-                                       , _pcUnbound   :: [Text]
+                                       , _pcUnbound   :: [Blank]
                                        , _pcNodes     :: [X.Node] }
 
 need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
@@ -296,12 +297,17 @@ processPlain pc@(ProcessContext _ m l o _ _) tn atr kids = do
            ++ processed
            ++ ["</" <> tagName <> ">"]
   where attrsToText attrs = T.concat <$> mapM attrToText (M.toList attrs)
-        attrToText (k,v) =
-          let name = X.nameLocalName k in
-          case mUnboundAttr (k,v) of
-            Just hole -> do filledIn <- unFill (fillIn hole m) mempty ([], mk o []) l
-                            return $ " " <> name <> "=\"" <> filledIn  <> "\""
-            Nothing   -> return $ " " <> name <> "=\"" <> v <> "\""
+        attrToText (k,v) = do
+          let name = X.nameLocalName k
+              unbound =  eUnboundAttr v
+          tuple <- sequence (name, T.concat <$> mapM fillAttr unbound)
+          return $ toText tuple
+        fillAttr eBlankText =
+          case eBlankText of
+            Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
+            Left text  -> return text
+
+        toText (k, v) = " " <> k <> "=\"" <> v <> "\""
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
@@ -318,11 +324,13 @@ processFancy (ProcessContext pth m l o _ _) tn atr kids =
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mk o kids)) l]
   where filledAttrs = M.fromList <$> mapM fillAttr (M.toList atr)
-        fillAttr (k, v) =
-          case mUnboundAttr (k, v) of
-            Just hole -> do filledIn <- unFill (fillIn hole m) mempty ([], mk o []) l
-                            return (k, filledIn)
-            Nothing   -> return (k, v)
+        fillAttr (k,v) = do
+          let unbound =  eUnboundAttr v
+          sequence (k, T.concat <$> mapM fillIt unbound)
+        fillIt eBlankText =
+          case eBlankText of
+            Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
+            Left text  -> return text
 
 processBind :: ProcessContext s ->
                Map X.Name Text ->
@@ -365,22 +373,28 @@ findTemplateFromAttrs pth l atr =
             Just tpl -> (pth' ++ targetPath, Just tpl)
             Nothing -> findTemplate (init pth') targetPath
 
-findUnbound :: Overrides -> [X.Node] -> [Text]
+findUnbound :: Overrides -> [X.Node] -> [Blank]
 findUnbound _ [] = []
 findUnbound o (X.NodeElement (X.Element name atr kids):ns) =
      let tn = X.nameLocalName name in
      if tn == "apply" || tn == "bind" || isPlain name o
      then findUnboundAttrs atr ++ findUnbound o kids
-     else tn : findUnboundAttrs atr ++ findUnbound o ns
+     else Blank tn : findUnboundAttrs atr ++ findUnbound o ns
 findUnbound o (_:ns) = findUnbound o ns
 
-findUnboundAttrs :: Map X.Name Text -> [Text]
-findUnboundAttrs atrs = mapMaybe mUnboundAttr (M.toList atrs)
+findUnboundAttrs :: Map X.Name Text -> [Blank]
+findUnboundAttrs atrs = rights $ concatMap (eUnboundAttr . snd) (M.toList atrs)
 
-mUnboundAttr :: (X.Name, Text) -> Maybe Text
-mUnboundAttr (_, value) = do
-  endVal <- T.stripPrefix "${" value
-  T.stripSuffix "}" endVal
+eUnboundAttr :: Text -> [Either Text Blank]
+eUnboundAttr value = do
+  let possibleWords = T.splitOn "${" value
+  let mWord w =
+        case T.splitOn "}" w of
+          [_] -> Left w
+          ["",_] -> Left ("${" <> w)
+          (word: _) -> Right (Blank word)
+          _ -> Left w
+  map mWord possibleWords
 
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
