@@ -170,6 +170,28 @@ spec = hspec $ do
         subs [("adjective", textFill "awesome")],
         mempty) `shouldRenderDef` "Roller derby is awesome"
 
+    it "should apply binds to applied templates" $ do
+      ("<bind tag=\"foo\">         \
+       \  Fill this in             \
+       \</bind>                    \
+       \<apply template=\"blah\">  \
+       \  <foo />                  \
+       \</apply>",
+       mempty,
+       M.fromList [(["blah"], parse "<apply-content /><foo />")])
+        `shouldRenderDef` "Fill this inFill this in"
+
+    it "should not let binds escape the apply-content tag" $ do
+      ("<apply template=\"blah\"> \
+       \  <bind tag=\"foo\">      \
+       \    Fill this in          \
+       \  </bind>                 \
+       \  <foo />                 \
+       \</apply>",
+       mempty,
+       M.fromList [(["blah"], parse "<apply-content /><foo />")])
+         `shouldErrorDef` "Missing fill for blank: \"foo\""
+
   describe "mapSubs" $ do
     it "should map the subs over a list" $ do
       (tpl4, subst, mempty) `shouldRenderDef` tpl4Output
