@@ -312,10 +312,17 @@ processFancy :: ProcessContext s ->
                 [X.Node] ->
                 StateT s IO [Text]
 processFancy (ProcessContext pth m l o _ _) tn atr kids =
-  let tagName = X.nameLocalName tn in
+  let tagName = X.nameLocalName tn in do
+  filled <- filledAttrs
   sequence [ unFill (fillIn tagName m)
-                    (M.mapKeys X.nameLocalName atr)
+                    (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mk o kids)) l]
+  where filledAttrs = M.fromList <$> mapM fillAttr (M.toList atr)
+        fillAttr (k, v) =
+          case mUnboundAttr (k, v) of
+            Just hole -> do filledIn <- unFill (fillIn hole m) mempty ([], mk o []) l
+                            return (k, filledIn)
+            Nothing   -> return (k, v)
 
 processBind :: ProcessContext s ->
                Map X.Name Text ->

@@ -242,6 +242,12 @@ spec = hspec $ do
        subs [("skater", textFill "Beyonslay")],
        mempty) `shouldRenderDef` "<p id=\"Beyonslay\">Beyonslay</p>"
 
+    it "should apply substitutions to attributes inside of blanks" $ do
+      ("<skater name=\"${name}\"><skater />",
+       subs [("skater", useAttrs (a"name") (\name -> textFill $ "Skater: " <> name))
+            ,("name", textFill "Beyonslay")],
+       mempty) `shouldRenderDef` "Skater: Beyonslay"
+
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
       (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"
