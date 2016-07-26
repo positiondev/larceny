@@ -12,6 +12,7 @@ module Web.Larceny ( Blank(..)
                    , FromAttribute(..)
                    , render
                    , renderWith
+                   , renderRelative
                    , loadTemplates
                    , defaultOverrides
                    , subs
@@ -45,7 +46,6 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
 import qualified Data.Text.Lazy.IO   as LT
-import           Data.Traversable    (for)
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
@@ -95,7 +95,14 @@ render l = renderWith l mempty
 
 -- | Render a template with some extra substitutions.
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
-renderWith l sub s p = M.lookup p l `for` \(Template run) -> evalStateT (run p sub l) s
+renderWith l sub s = renderRelative l sub s []
+
+-- | Render a template found relative to current template's path.
+renderRelative :: Library s -> Substitutions s -> s -> Path -> Path -> IO (Maybe Text)
+renderRelative l sub s currentPath targetPath =
+  case findTemplate l currentPath targetPath of
+    (pth, Just (Template run)) -> Just <$> evalStateT (run pth sub l) s
+    (_, Nothing) -> return Nothing
 
 -- | Load all the templates in some directory into a Library.
 loadTemplates :: FilePath -> Overrides -> IO (Library s)
@@ -364,14 +371,16 @@ findTemplateFromAttrs :: Path ->
 findTemplateFromAttrs pth l atr =
   let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
                                           (M.lookup "template" atr) in
-  case findTemplate (init pth) tplPath of
-    (_, Nothing) -> error $ "Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
+  case findTemplate l (init pth) tplPath of
+    (_, Nothing) -> error $ "apply: Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
     (targetPath, Just tpl) -> (targetPath, tpl)
-  where findTemplate [] targetPath = (targetPath, M.lookup targetPath l)
-        findTemplate pth' targetPath =
-          case M.lookup (pth' ++ targetPath) l of
-            Just tpl -> (pth' ++ targetPath, Just tpl)
-            Nothing -> findTemplate (init pth') targetPath
+
+findTemplate :: Library s -> Path -> Path -> (Path, Maybe (Template s))
+findTemplate lib [] targetPath = (targetPath, M.lookup targetPath lib)
+findTemplate lib pth' targetPath =
+  case M.lookup (pth' ++ targetPath) lib of
+    Just tpl -> (pth' ++ targetPath, Just tpl)
+    Nothing -> findTemplate lib (init pth') targetPath
 
 findUnbound :: Overrides -> [X.Node] -> [Blank]
 findUnbound _ [] = []

@@ -65,10 +65,15 @@ shouldRenderContaining (pth, t, s, l) excerpt = do
   rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
+shouldErrorPath :: (Path, Text, Substitutions (), Library ()) -> String -> Expectation
+shouldErrorPath (pth, t', s, l) output =
+    (do renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
+        (evaluate . force) renderAttempt) `shouldThrow` errorCall output
+
 shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
 shouldErrorDef (t', s, l) output = do
-    renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
-    (evaluate . force) renderAttempt `shouldThrow` (errorCall output)
+  (do renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
+      (evaluate . force) renderAttempt) `shouldThrow` errorCall output
 
 spec :: IO ()
 spec = hspec $ do
@@ -115,6 +120,12 @@ spec = hspec $ do
         mempty,
         M.fromList [(["base"], parse "hello")
                    ,(["foo", "base"], parse "goodbye")]) `shouldRender` "goodbye"
+
+    it "should only truncate parts from current path, not specified template path" $
+       (["foo"], "<apply template=\"bar/baz\" />",
+        mempty,
+        M.fromList [(["baz"], parse "hello")]) `shouldErrorPath` "apply: Couldn't find [\"bar\",\"baz\"] relative to [\"foo\"]."
+
     it "should use the path to the applied template when looking" $
          (["default"], "<apply template=\"foo/bar/baz\" />",
           mempty,
