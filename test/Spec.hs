@@ -261,6 +261,13 @@ spec = hspec $ do
             ,("adj", textFill "great")],
        mempty) `shouldRenderDef` "Skater: the great Beyonslay"
 
+    it "should keep special characters in attribute" $ do
+      ("<a href=\"/s/${token}/${magazine}-${number}.pdf\">Issue 5</a>",
+       subs [("token", textFill "123")
+            ,("magazine", textFill "BloodAndThunder")
+            ,("number", textFill "5")],
+       mempty) `shouldRenderDef` "<a href=\"/s/123/BloodAndThunder-5.pdf\">Issue 5</a>"
+
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
       (["default"], tpl6, subst, positionTplLib) `shouldRenderContaining` "Verso Books"

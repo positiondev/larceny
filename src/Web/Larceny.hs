@@ -390,11 +390,11 @@ eUnboundAttr value = do
   let possibleWords = T.splitOn "${" value
   let mWord w =
         case T.splitOn "}" w of
-          [_] -> Left w
-          ["",_] -> Left ("${" <> w)
-          (word: _) -> Right (Blank word)
-          _ -> Left w
-  map mWord possibleWords
+          [_] -> [Left w]
+          ["",_] -> [Left ("${" <> w)]
+          (word: rest) -> Right (Blank word) : map Left rest
+          _ -> [Left w]
+  concatMap mWord possibleWords
 
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
