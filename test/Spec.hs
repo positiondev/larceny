@@ -4,7 +4,6 @@ import           Control.DeepSeq     (force)
 import           Control.Exception   (evaluate)
 import           Control.Monad.State (evalStateT, get, modify)
 import           Control.Monad.Trans (liftIO)
-import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
@@ -143,18 +142,18 @@ spec = hspec $ do
       ("<html><div></div></html>",
        subs [("div", textFill "notadivatall")],
        mempty,
-       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+       Overrides mempty ["div"]) `shouldRenderCustom` "<html>not a div at all</html>"
     it "should allow (nested) overriden Html tags" $ do
       ("<html><custom><div></div></custom></html>",
        subs [("div", textFill "notadivatall")
             ,("custom", fillChildrenWith mempty)],
        mempty,
-       Overrides mempty (HS.fromList ["div"])) `shouldRenderCustom` "<html>not a div at all</html>"
+       Overrides mempty ["div"]) `shouldRenderCustom` "<html>not a div at all</html>"
     it "should not need fills for manually added plain nodes" $ do
       ("<html><blink>retro!!</blink></html>",
        mempty,
        mempty,
-       Overrides (HS.fromList ["blink"]) mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
+       Overrides ["blink"] mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
 
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
@@ -232,7 +231,6 @@ spec = hspec $ do
         mempty) `shouldRenderDef` "A really l..."
 
     it "should allow you use child elements" $ do
-      --- whoa, this is kinda terrible
       let descTplFill =
             useAttrs (a"length")
                      (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
