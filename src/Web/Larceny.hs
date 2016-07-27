@@ -83,9 +83,20 @@ type Path = [Text]
 -- | A collection of templates.
 type Library s = Map Path (Template s)
 
-data Overrides = Overrides { customPlainNodes   :: HS.HashSet Text
-                           , overridePlainNodes :: HS.HashSet Text}
+-- | If no substitutions are given, Larceny only understands valid
+-- HTML 5 tags. It won't attempt to "fill in" tags that are already
+-- valid HTML 5. Use Overrides to use non-HTML 5 tags without
+-- providing your own substitutions, or to provide fills for standard HTML tags.
+--
+-- @
+-- -- Use the deprecated "marquee" and "blink" tags and write your
+-- -- own fill for the "a" tag.
+-- Overrides ["marquee", "blink"] ["a"]
+-- @
+data Overrides = Overrides { customPlainNodes :: [Text]
+                           , overrideNodes    :: [Text] }
 
+-- | Default uses no overrides.
 defaultOverrides :: Overrides
 defaultOverrides = Overrides mempty mempty
 
@@ -285,8 +296,9 @@ process pc = do
 
 isPlain :: X.Name -> Overrides -> Bool
 isPlain tn os =
-  let allPlainNodes = (customPlainNodes os `HS.union` html5Nodes)
-                      `HS.difference` overridePlainNodes os in
+  let allPlainNodes = (HS.fromList (customPlainNodes os) `HS.union`
+                       html5Nodes)
+                      `HS.difference` HS.fromList (overrideNodes os) in
   HS.member (X.nameLocalName tn) allPlainNodes
 
 -- Add the open tag and attributes, process the children, then close
