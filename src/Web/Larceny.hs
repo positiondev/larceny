@@ -3,24 +3,37 @@
 
 {-|
 
-A long description
+A long description with example use with Scotty.
+
+It'll be something like:
+
+Write some templates.
+
+Add a `Library` to your Scotty state with `loadTemplates`.
+
+Write some `Substitutions`.
+
+Write some Larceny/Scotty glue.
+
+Use `render` and `renderWith` in your Scotty handlers.
+
+Admire your lovely app!!
 
 -}
 
 module Web.Larceny ( Blank(..)
                    , Fill(..)
-                   , AttrArgs
+                   , Attributes
                    , Substitutions
                    , Template(..)
-                   , Path -- ???
+                   , Path
                    , Library
                    , Overrides(..)
-                   , FromAttribute(..)
+                   , defaultOverrides
                    , render
                    , renderWith
                    , renderRelative
                    , loadTemplates
-                   , defaultOverrides
                    , subs
                    , textFill
                    , textFill'
@@ -32,12 +45,16 @@ module Web.Larceny ( Blank(..)
                    , maybeFillChildrenWith
                    , maybeFillChildrenWith'
                    , useAttrs
+                   , FromAttribute(..)
                    , AttrError(..)
+                   , MissingBlanks(..)
+                   , ApplyError(..)
                    , a
                    , (%)
                    , parse
                    , parseWithOverrides) where
 
+import           Control.Exception
 import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
 import           Data.Either
@@ -66,33 +83,46 @@ import           Web.Larceny.Html    (html5Nodes)
 -- Blanks can be tags or they can be all or parts of attribute values in tags.
 --
 -- Example blanks:
+--
 -- @
--- <skater>                           <- "skater"
--- <p class=${name}>                  <- "name"
--- <skater name="${name}">            <- both "skater" and "name"
--- <a href="teams/${team}/{$number}"> <- both "team" and number"
+-- \<skater>                           \<- "skater"
+-- \<p class=${name}>                  \<- "name"
+-- \<skater name="${name}">            \<- both "skater" and "name"
+-- \<a href="teams\/${team}\/{$number}"> \<- both "team" and number"
 -- @
 newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 
 -- | A  Fill is how to fill in a Blank.
 --
--- You can use helper functions like `textFill` or `fillChildrenWith`
--- from this module, or write Fills from scratch:
+-- In most cases, you can use helper functions like `textFill` or
+-- `fillChildrenWith` to create your fills. You can also write Fills
+-- from scratch.
 --
--- @ Fill $ \attrs (pth, _tpl) _lib -> return $ T.pack $ show attrs
+-- @
+-- Fill $ \attrs _tpl _lib ->
+--          return $ T.pack $ show $ M.keys attrs)
+-- @
+--
+-- With that Fill, a Blank like this:
+--
+-- > <displayAttrs attribute="hello!" another="goodbye!"/>
+--
+-- would be rendered as:
+--
+-- > ["attribute", "another"]
 --
 -- Fills (and Substitutions and Templates) have the type `StateT s IO
 -- Text` in case you need templates to depend on IO actions (like
 -- looking something up in a database) or store state (perhaps keeping
 -- track of what's already been rendered).
-newtype Fill s = Fill { unFill :: AttrArgs
+newtype Fill s = Fill { unFill :: Attributes
                                -> (Path, Template s)
                                -> Library s
                                -> StateT s IO Text }
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
-type AttrArgs = Map Text Text
+type Attributes = Map Text Text
 
 -- | A map from Blanks to how to fill in the Blank.
 type Substitutions s = Map Blank (Fill s)
@@ -143,7 +173,7 @@ render l = renderWith l mempty
 -- substitutions.
 --
 -- @
--- renderWith myLibrary extraSubs () ["path"]
+-- renderWith appTemplates extraSubs appState ["path", "to", "template"]
 -- @
 renderWith :: Library s -> Substitutions s -> s -> Path -> IO (Maybe Text)
 renderWith l sub s = renderRelative l sub s []
@@ -152,16 +182,17 @@ renderWith l sub s = renderRelative l sub s []
 --
 -- This will attempt to find the target template starting at the same
 -- level as the given path, then will traverse up the directory tree
--- until it finds a template with the given path.
+-- until it finds a template with the target path.
 --
--- For example: Given these templates: `["foo"], ["foo", "baz"],
--- ["foo", "bar", "baz"], ["bar", "baz"]`, `renderRelative` called
--- with a "current path" of ["foo"] and "target path" of ["bar",
--- "baz"] will find ["foo", "bar", "baz"]. If there wasn't a ["foo",
--- "bar, "baz"], it would render ["bar", "baz"].
+-- For example: Given these templates: ["current"], ["current",
+-- "dashboard"], ["current", "private", "dashboard"], ["private",
+-- "dashboard"], `renderRelative` called with a given path of
+-- ["current"] and target path of ["private", "dashboard"] will find
+-- ["current", "private", "dashboard"]. If there /wasn't/ a ["current",
+-- "private", "dashboard"], it would render ["private", "dashboard"].
 renderRelative :: Library s -> Substitutions s -> s -> Path -> Path -> IO (Maybe Text)
-renderRelative l sub s currentPath targetPath =
-  case findTemplate l currentPath targetPath of
+renderRelative l sub s givenPath targetPath =
+  case findTemplate l givenPath targetPath of
     (pth, Just (Template run)) -> Just <$> evalStateT (run pth sub l) s
     (_, Nothing) -> return Nothing
 
@@ -194,7 +225,7 @@ getAllTemplates path =
 subs :: [(Text, Fill s)] -> Substitutions s
 subs = M.fromList . map (\(x, y) -> (Blank x, y))
 
--- | A plain  text fill.
+-- | A plain text fill.
 --
 -- @
 -- textFill "This text will be displayed in place of the blank"
@@ -215,8 +246,9 @@ textFill' t = Fill $ \_m _t _l -> t
 -- with those substitutions.
 --
 -- @
--- <skaters><name /></skaters>
--- ("skaters", mapSubs (\name -> subs [("name", textFill name)]) listOfNames)
+-- \<members>\<name \/>\<\/members>
+-- ("members", mapSubs (\name -> subs [("name", textFill name)])
+--                     ["Bonnie Thunders", "Donna Matrix", \"Beyonslay\"]
 -- @
 --
 -- > Bonnie Thunders Donna Matrix Beyonslay
@@ -239,19 +271,19 @@ mapSubs' f xs = Fill $
 -- available.
 --
 -- @
--- <skater><p>Hello</p></skater>
--- ("skater", fillChildren)
+-- \<no-op>\<p>Same\<\/p>\<\/no-op>
+-- ("no-op", fillChildren)
 -- @
 --
--- > <p>Hello</p>
+-- > <p>Same</p>
 fillChildren :: Fill s
 fillChildren = fillChildrenWith mempty
 
 -- | Fill in the child nodes of the blank with new substitutions.
 --
 -- @
--- <skater><name /></skater>
--- ("skater", fillChildrenWith (subs $ [("name", textFill "Beyonslay")]))
+-- \<member>\<name \/>\<\/member>
+-- ("skater", fillChildrenWith (subs $ [("name", textFill "Bonnie Thunders")]))
 -- @
 --
 -- > Beyonslay
@@ -261,9 +293,9 @@ fillChildrenWith m = maybeFillChildrenWith (Just m)
 -- | Use substitutions with State and IO.
 --
 -- @
--- <rockTheWorld><results /></rockTheWorld>
+-- \<changeTheWorld>\<results \/>\<\/changeTheWorld>
 -- -- doABunchOfStuffAndGetSubstitutions :: StateT () IO (Substitutions ())
--- ("rockTheWorld", fillChildrenWith' doStuffAndGetSubstitutions)
+-- ("changeTheWorld", fillChildrenWith' doStuffAndGetSubstitutions)
 -- @
 --
 -- > This template did IO!
@@ -273,12 +305,12 @@ fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
 -- | Fill with substitutions if those substitutions are provided.
 --
 -- @
--- <ifDisplayUser><userName /></ifDisplayUser>
+-- \<ifDisplayUser>\<userName \/>\<\/ifDisplayUser>
 -- ("ifDisplayUser", maybeFillChildrenWith
---                     (Just $ subs' ("userName", textFill "A user")))
+--                     (Just $ subs' ("userName", textFill "Bonnie Thunders")))
 -- @
 --
--- > A user
+-- > Bonnie Thunders
 maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
 maybeFillChildrenWith Nothing = textFill ""
 maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
@@ -287,13 +319,15 @@ maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
 -- | Use state and IO and maybe fill in with some substitutions.
 --
 -- @
--- <ifLoggedIn><userName /></ifLoggedIn>
+-- \<ifLoggedIn>Logged in as \<userName \/>\<\/ifLoggedIn>
 -- ("ifLoggedIn", maybeFillChildrenWith' $ do
---                     user <- getLoggedInUser
---                     (Just $ subs' ("userName", textFill user)))
+--                  mUser <- getLoggedInUser -- returns (Just "Bonnie Thunders")
+--                  case mUser of
+--                    Just user -> Just $ subs' ("userName", textFill user)
+--                    Nothing   -> Nothing)
 -- @
 --
--- > Suzy Logdin
+-- > Bonnie Thunders
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
 maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
   mSubs <- sMSubs
@@ -304,9 +338,9 @@ maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
 -- | Use attributes from the the blank as arguments to the fill.
 --
 -- @
--- <desc length=\"10\" />
+-- \<desc length=\"10\" \/>
 -- ("desc", useAttrs (a"length") descriptionFill)
--- descriptionFill len = textFill $ T.take n
+-- descriptionFill len = textFill $ T.take len
 --                                  "A really long description"
 --                                  <> "..."))
 -- @
@@ -314,24 +348,34 @@ maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
 -- > A really l...
 --
 -- `useAttrs` takes two arguments. The first is a way to get values of
--- attributes that you can use in Fills. You can use `a"some-attribute-name"`
--- and `(%)` to create these. The second argument is a function that uses the
+-- attributes that you can use in Fills. You can use `a` and `%` to
+-- create these. The second argument is a function that uses the
 -- values of those attributes to create a Fill.
-useAttrs :: (AttrArgs -> k -> Fill s)
+useAttrs :: (Attributes -> k -> Fill s)
          ->  k
          ->  Fill s
 useAttrs k fill= Fill $ \atrs (pth, tpl) lib ->
      unFill (k atrs fill) atrs (pth, tpl) lib
+type AttrName = Text
 
-data AttrError = AttrMissing
-               | AttrUnparsable Text
-               | AttrOtherError Text deriving (Eq, Show)
+-- | If an attribute is required but missing, or unparsable, one of
+-- these errors is thrown.
+data AttrError = AttrMissing AttrName
+               | AttrUnparsable Text AttrName
+               | OtherAttrError Text AttrName deriving (Eq)
+instance Exception AttrError
 
--- | A typeclass for things that can be parsed from
--- attributes.
+instance Show AttrError where
+  show (AttrMissing name) = "Missing attribute \"" <> T.unpack name <> "\"."
+  show (AttrUnparsable toType name) = "Attribute with name \""
+    <> T.unpack name <> "\" can't be parsed to type \""
+    <> T.unpack toType <> "\"."
+  show (OtherAttrError e name) = "Error parsing attribute \""
+    <> T.unpack name <> "\": " <> T.unpack e
+
+-- | A typeclass for things that can be parsed from attributes.
 class FromAttribute a where
-  -- | Something
-  fromAttribute :: Maybe Text -> Either AttrError a
+  fromAttribute :: Maybe Text -> Either (Text -> AttrError) a
 
 instance FromAttribute Text where
   fromAttribute = maybe (Left AttrMissing) Right
@@ -347,32 +391,27 @@ instance FromAttribute a => FromAttribute (Maybe a) where
 -- The type of the attribute is whatever type the fill expects. If `a`
 -- can't parse the value, then there will be an error when the template
 -- is rendered.
-a :: FromAttribute a => Text -> AttrArgs -> (a -> b) -> b
+a :: (FromAttribute a) => Text -> Attributes -> (a -> b) -> b
 a attrName attrs k =
   let mAttr = M.lookup attrName attrs in
-  k (either (error . T.unpack . attrError) id (fromAttribute mAttr))
-  where attrError AttrMissing        = "Attribute error: Unable to find attribute \"" <>
-                                       attrName <> "\"."
-        attrError (AttrUnparsable t) = "Attribute error: Unable to parse attribute \""
-                                       <> attrName <> "\" as type " <> t <> "."
-        attrError (AttrOtherError t) = "Attribute error: " <> t
+  k (either (\e -> throw $ e attrName) id (fromAttribute mAttr))
 
--- | Use with `a` to combine attributes to use in the fill.
+-- | Use with `a` to use multiple attributes in the fill.
 --
 -- @
--- <desc length=\"10\" />
+-- \<desc length=\"10\" \/>
 -- ("desc", useAttrs (a"length" % a"ending") descriptionFill)
 -- descriptionFill len maybeEnding =
---   let ending = fromMaybe "..." maybeEnding
+--   let ending = fromMaybe "..." maybeEnding in
 --   textFill $ T.take n
 --              "A really long description"
 --              <> ending))
 -- @
 --
 -- > A really l...
-(%) :: (AttrArgs -> a -> b)
-    -> (AttrArgs -> b -> c)
-    ->  AttrArgs -> a -> c
+(%) :: (Attributes -> a -> b)
+    -> (Attributes -> b -> c)
+    ->  Attributes -> a -> c
 (%) f1 f2 attrs k = f2 attrs (f1 attrs k)
 
 -- | Turn lazy text into templates.
@@ -393,10 +432,10 @@ mk o nodes =
     need pth m unbound <$>
     (T.concat <$> process (ProcessContext pth m l o unbound nodes))
 
-fillIn :: Text -> Substitutions s -> Fill s
-fillIn tn m =
+fillIn :: Text -> Substitutions s -> Path -> Fill s
+fillIn tn m pth =
   fromMaybe
-     (error $ "Missing fill for blank: \"" <> T.unpack tn <> "\"")
+     (textFill "")
      (M.lookup (Blank tn) m)
 
 data ProcessContext s = ProcessContext { _pcPath      :: Path
@@ -406,13 +445,20 @@ data ProcessContext s = ProcessContext { _pcPath      :: Path
                                        , _pcUnbound   :: [Blank]
                                        , _pcNodes     :: [X.Node] }
 
+data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
+instance Show MissingBlanks where
+  show (MissingBlanks blanks pth) =
+    let showBlank (Blank tn) = "\"" <> T.unpack tn <> "\"" in
+    "Missing fill for blanks " <> concatMap showBlank blanks
+    <> " in template " <> show pth <> "."
+instance Exception MissingBlanks
+
 need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
 need pth m keys rest =
   let d = S.difference (S.fromList keys) (M.keysSet m)
   in if S.null d
      then rest
-     else error $ "Template " <> show pth
-          <> " is missing substitutions for blanks: " <> show d
+     else throw $ MissingBlanks (S.toList d) pth
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
@@ -520,15 +566,21 @@ processApply (ProcessContext pth m l o _ _) atr kids = do
                          textFill contentTpl)]
   sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
 
+data ApplyError = ApplyError Path Path deriving (Eq)
+instance Show ApplyError where
+  show (ApplyError tplPth pth) =
+    "Couldn't find " <> show tplPth <> " relative to " <> show pth <> "."
+instance Exception ApplyError
+
 findTemplateFromAttrs :: Path ->
                          Library s ->
                          Map X.Name Text ->
                          (Path, Template s)
 findTemplateFromAttrs pth l atr =
-  let tplPath = T.splitOn "/" $ fromMaybe (error "No template name given.")
+  let tplPath = T.splitOn "/" $ fromMaybe (throw $ AttrMissing "template")
                                           (M.lookup "template" atr) in
   case findTemplate l (init pth) tplPath of
-    (_, Nothing) -> error $ "apply: Couldn't find " <> show tplPath <> " relative to " <> show pth <> "."
+    (_, Nothing) -> throw $ ApplyError tplPath pth
     (targetPath, Just tpl) -> (targetPath, tpl)
 
 findTemplate :: Library s -> Path -> Path -> (Path, Maybe (Template s))

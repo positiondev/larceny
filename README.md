@@ -28,21 +28,21 @@ And "substitutions" that look like this:
 ```
 teamPageSubs :: Substitutions ()
 teamPageSubs =
-  subs [ ("name", text "Gotham Girls")
+  subs [ ("name", textFill "Gotham Girls")
        , ("skaters", mapSubs
                      (\(i,n,p,b) ->
-                       subs [ ("id", text i)
-                            , ("name", text n)
-                            , ("position", text p)
-                            , ("longBio", text b)])
+                       subs [ ("id", textFill i)
+                            , ("name", textFill n)
+                            , ("position", textFill p)
+                            , ("longBio", textFill b)])
                     [ ("1", "Bonnie Thunders", "jammer", longBio)
                     , ("2", "Donna Matrix", "blocker", longBio)
                     , ("3", "V-Diva", "jammer", longBio) ] )
        , ("bio", useAttrs (a"length" %
-                            a"text")
-                           shortenerFill))
+                           a"text")
+                           bioFill))
   where longBio = "Some example bio that is really long!"
-        shortenerFill maybeNumber fullBio = textFill $
+        bioFill maybeNumber fullBio = textFill $
           case maybeNumber of
             Just numChars -> T.take numChars fullBio <> "..."
             Nothing -> fullBio
@@ -87,8 +87,13 @@ understand and use (if slower).
 
 ## Differences from Heist
 
+The Haskell code you write to fill in your templates is very different
+from Heist, but we tried to make the templates themselves as similar
+as possible, with a couple notable exceptions:
+
 Larceny is different from Interpreted Heist (but similar to Compiled
-Heist) in that it doesn't escape any text.
+Heist) in that it doesn't escape any text. (This may change to make
+the default `textFill`s escaped and add `rawTextFill` versions.)
 
 In Heist, `<bind>`s inside of nested template application can be used
 in the outer templates. We found that confusing, so Larceny doesn't

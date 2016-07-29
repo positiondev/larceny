@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 import           Control.DeepSeq     (force)
-import           Control.Exception   (evaluate)
+import           Control.Exception   (Exception, evaluate)
 import           Control.Monad.State (evalStateT, get, modify)
 import           Control.Monad.Trans (liftIO)
 import qualified Data.Map            as M
@@ -64,15 +64,15 @@ shouldRenderContaining (pth, t, s, l) excerpt = do
   rendered <- evalStateT (runTemplate (parse (LT.fromStrict t)) pth s l) ()
   (excerpt `T.isInfixOf` rendered) `shouldBe` True
 
-shouldErrorPath :: (Path, Text, Substitutions (), Library ()) -> String -> Expectation
-shouldErrorPath (pth, t', s, l) output =
+shouldErrorPath :: (Exception a, Eq a) =>(Path, Text, Substitutions (), Library ()) -> a -> Expectation
+shouldErrorPath (pth, t', s, l) e =
     (do renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
-        (evaluate . force) renderAttempt) `shouldThrow` errorCall output
+        (evaluate . force) renderAttempt) `shouldThrow` (== e)
 
-shouldErrorDef :: (Text, Substitutions (), Library ()) -> String -> Expectation
-shouldErrorDef (t', s, l) output = do
+shouldErrorDef :: (Exception a, Eq a) =>(Text, Substitutions (), Library ()) -> a -> Expectation
+shouldErrorDef (t', s, l) e = do
   (do renderAttempt <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
-      (evaluate . force) renderAttempt) `shouldThrow` errorCall output
+      (evaluate . force) renderAttempt) `shouldThrow` (== e)
 
 spec :: IO ()
 spec = hspec $ do
@@ -123,7 +123,7 @@ spec = hspec $ do
     it "should only truncate parts from current path, not specified template path" $
        (["foo"], "<apply template=\"bar/baz\" />",
         mempty,
-        M.fromList [(["baz"], parse "hello")]) `shouldErrorPath` "apply: Couldn't find [\"bar\",\"baz\"] relative to [\"foo\"]."
+        M.fromList [(["baz"], parse "hello")]) `shouldErrorPath` ApplyError ["bar","baz"] ["foo"]
 
     it "should use the path to the applied template when looking" $
          (["default"], "<apply template=\"foo/bar/baz\" />",
@@ -189,7 +189,7 @@ spec = hspec $ do
        \</apply>",
        mempty,
        M.fromList [(["blah"], parse "<apply-content /><foo />")])
-         `shouldErrorDef` "Missing fill for blank: \"foo\""
+         `shouldErrorDef` MissingBlanks [Blank "foo"] ["blah"]
 
   describe "mapSubs" $ do
     it "should map the subs over a list" $ do
@@ -257,7 +257,7 @@ spec = hspec $ do
                                (\n -> textFill $ T.take n
                                       "A really long description"
                                       <> "..."))],
-        mempty) `shouldErrorDef` "Attribute error: Unable to find attribute \"length\"."
+        mempty) `shouldErrorDef` AttrMissing "length"
 
     it "should give a nice error message if attribute is unparsable" $ do
       ("<desc length=\"infinite\" />",
@@ -265,7 +265,7 @@ spec = hspec $ do
                                (\n -> textFill $ T.take n
                                       "A really long description"
                                       <> "..."))],
-        mempty) `shouldErrorDef` "Attribute error: Unable to parse attribute \"length\" as type Int."
+        mempty) `shouldErrorDef` AttrUnparsable "Int" "length"
 
   describe "attributes" $ do
     it "should apply substitutions to attributes as well" $ do
