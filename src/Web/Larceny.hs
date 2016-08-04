@@ -355,7 +355,8 @@ useAttrs :: (Attributes -> k -> Fill s)
          ->  k
          ->  Fill s
 useAttrs k fill= Fill $ \atrs (pth, tpl) lib ->
-     unFill (k atrs fill) atrs (pth, tpl) lib
+  unFill (k atrs fill) atrs (pth, tpl) lib
+
 type AttrName = Text
 
 -- | If an attribute is required but missing, or unparsable, one of
@@ -432,11 +433,8 @@ mk o nodes =
     need pth m unbound <$>
     (T.concat <$> process (ProcessContext pth m l o unbound nodes))
 
-fillIn :: Text -> Substitutions s -> Path -> Fill s
-fillIn tn m pth =
-  fromMaybe
-     (textFill "")
-     (M.lookup (Blank tn) m)
+fillIn :: Text -> Substitutions s -> Fill s
+fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
 
 data ProcessContext s = ProcessContext { _pcPath      :: Path
                                        , _pcSubs      :: Substitutions s
