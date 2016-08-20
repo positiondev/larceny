@@ -314,6 +314,13 @@ spec = hspec $ do
                   ["default"]
        `shouldReturn` Just "12"
 
+  describe "escaping" $ do
+    it "should not escape html" $ do
+      ("<p><someHtml /></p>",
+       subs [("someHtml", textFill "<strong>Some HTML</strong>")],
+       mempty) `shouldRenderDef`
+       "<p><strong>Some HTML</strong></p>"
+
 descFill :: Fill ()
 descFill =
   useAttrs (a"length" % a"ending") descFunc
