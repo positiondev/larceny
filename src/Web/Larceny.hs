@@ -209,7 +209,8 @@ loadTemplates path overrides =
 
 getAllTemplates :: FilePath -> IO [FilePath]
 getAllTemplates path =
-  do cs <- listDirectory path
+  do cExist <- doesDirectoryExist path
+     cs <- if cExist then listDirectory path else return []
      let tpls = filter ((== ".tpl") . takeExtension) cs
      dirs <- filterM (doesDirectoryExist . (\d -> path <> "/" <> d)) cs
      rs <- mapM (\dir -> do r <- getAllTemplates (path <> "/" <> dir)
