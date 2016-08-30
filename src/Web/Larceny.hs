@@ -9,6 +9,29 @@ It'll be something like:
 
 Write some templates.
 
+Here's _post_base.tpl:
+@
+<html>
+  <head><title>Post: <pageTitle /></title></head>
+  <body>
+    <header>
+      <h1><pageTitle /></h1>
+    </header>
+
+    <apply-content />
+
+  </body>
+</html>
+@
+
+And post.tpl:
+@
+<apply template="_base">
+  <bind tag="pageTitle"><someTitle /></bind>
+  <h
+</apply>
+@
+
 Add a `Library` to your Scotty state with `loadTemplates`.
 
 Write some `Substitutions`.
@@ -16,6 +39,8 @@ Write some `Substitutions`.
 Write some Larceny/Scotty glue.
 
 Use `render` and `renderWith` in your Scotty handlers.
+
+Here's a `larcenyServe`.
 
 Admire your lovely app!!
 
@@ -34,6 +59,7 @@ module Web.Larceny ( Blank(..)
                    , renderWith
                    , renderRelative
                    , loadTemplates
+                   , getAllTemplates
                    , subs
                    , textFill
                    , textFill'
@@ -67,8 +93,8 @@ import           Data.Monoid         ((<>))
 import qualified Data.Set            as S
 import           Data.Text           (Text)
 import qualified Data.Text           as T
+import qualified Data.Text.IO        as ST
 import qualified Data.Text.Lazy      as LT
-import qualified Data.Text.Lazy.IO   as LT
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
@@ -78,9 +104,9 @@ import qualified Text.XML            as X
 import           Web.Larceny.Html    (html5Nodes)
 
 
--- | A "blank" in the template that can be filled in with some
--- value by Haskell code.
--- Blanks can be tags or they can be all or parts of attribute values in tags.
+-- | Corresponds to a "blank" in the template that can be filled in
+-- with some value by running Haskell code.  Blanks can be tags or
+-- they can be all or parts of attribute values in tags.
 --
 -- Example blanks:
 --
@@ -124,7 +150,7 @@ newtype Fill s = Fill { unFill :: Attributes
 -- it's value.
 type Attributes = Map Text Text
 
--- | A map from Blanks to how to fill in the Blank.
+-- | A map from a Blank to how to fill in that Blank.
 type Substitutions s = Map Blank (Fill s)
 
 -- | When you run a Template with the path, some substitutions, and the
@@ -132,7 +158,7 @@ type Substitutions s = Map Blank (Fill s)
 --
 -- Use `loadTemplates` to load the templates from some directory
 -- into a template library. Use the `render` functions to render
--- templates by path.
+-- templates from a Library by path.
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
                                             -> Library s
@@ -147,7 +173,8 @@ type Library s = Map Path (Template s)
 -- | If no substitutions are given, Larceny only understands valid
 -- HTML 5 tags. It won't attempt to "fill in" tags that are already
 -- valid HTML 5. Use Overrides to use non-HTML 5 tags without
--- providing your own substitutions, or to provide fills for standard HTML tags.
+-- providing your own substitutions, or to provide your own fills for
+-- standard HTML tags.
 --
 -- @
 -- -- Use the deprecated "marquee" and "blink" tags and write your
@@ -201,9 +228,9 @@ loadTemplates :: FilePath -> Overrides -> IO (Library s)
 loadTemplates path overrides =
   do tpls <- getAllTemplates path
      M.fromList <$>
-       mapM (\file -> do content <- LT.readFile (path <> "/" <> file)
+       mapM (\file -> do content <- ST.readFile (path <> "/" <> file)
                          return (mkPath file,
-                                 parseWithOverrides overrides content))
+                                 parseWithOverrides overrides (LT.fromStrict content)))
                          tpls
   where mkPath p = T.splitOn "/" $ T.pack $ dropExtension p
 
