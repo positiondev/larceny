@@ -524,25 +524,36 @@ processPlain :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processPlain pc@(ProcessContext _ m l o _ _) tn atr kids = do
-  atrs <- attrsToText atr
+processPlain pc tn atr kids = do
+  atrs <- attrsToText pc atr
   processed <- process (pc { _pcNodes = kids })
   let tagName = X.nameLocalName tn
   return $ ["<" <> tagName <> atrs <> ">"]
            ++ processed
            ++ ["</" <> tagName <> ">"]
-  where attrsToText attrs = T.concat <$> mapM attrToText (M.toList attrs)
-        attrToText (k,v) = do
+
+attrsToText :: ProcessContext s -> Map X.Name Text -> StateT s IO Text
+attrsToText pc attrs =
+  T.concat <$> mapM attrToText (M.toList attrs)
+  where attrToText (k,v) = do
           let name = X.nameLocalName k
               unbound =  eUnboundAttrs v
-          tuple <- sequence (name, T.concat <$> mapM fillAttr unbound)
+          tuple <- sequence (name, T.concat <$> mapM (fillAttr pc) unbound)
           return $ toText tuple
-        fillAttr eBlankText =
-          case eBlankText of
-            Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
-            Left text  -> return text
-
         toText (k, v) = " " <> k <> "=\"" <> v <> "\""
+
+fillAttrs :: ProcessContext s -> Map X.Name Text -> StateT s IO (Map X.Name Text)
+fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
+  where fill (k, v) = do
+          let unbound =  eUnboundAttrs v
+          sequence (k, T.concat <$> mapM (fillAttr pc) unbound)
+
+fillAttr :: ProcessContext s -> Either Text Blank -> StateT s IO Text
+fillAttr (ProcessContext _ m l o _ _) eBlankText =
+  case eBlankText of
+    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
+    Left text  -> return text
+
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
@@ -552,20 +563,12 @@ processFancy :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processFancy (ProcessContext pth m l o _ _) tn atr kids =
+processFancy pc@(ProcessContext pth m l o _ _) tn atr kids =
   let tagName = X.nameLocalName tn in do
-  filled <- filledAttrs
+  filled <- fillAttrs pc atr
   sequence [ unFill (fillIn tagName m)
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mk o kids)) l]
-  where filledAttrs = M.fromList <$> mapM fillAttr (M.toList atr)
-        fillAttr (k,v) = do
-          let unbound =  eUnboundAttrs v
-          sequence (k, T.concat <$> mapM fillIt unbound)
-        fillIt eBlankText =
-          case eBlankText of
-            Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
-            Left text  -> return text
 
 processBind :: ProcessContext s ->
                Map X.Name Text ->
@@ -585,8 +588,9 @@ processApply :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processApply (ProcessContext pth m l o _ _) atr kids = do
-  let (absolutePath, tplToApply) = findTemplateFromAttrs pth l atr
+processApply pc@(ProcessContext pth m l o _ _) atr kids = do
+  filledAttrs <- fillAttrs pc atr
+  let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- runTemplate (mk o kids) pth m l
   let contentSub = subs [("apply-content",
                          textFill contentTpl)]

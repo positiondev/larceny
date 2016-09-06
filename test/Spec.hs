@@ -136,6 +136,10 @@ spec = hspec $ do
           mempty,
           M.fromList [(["default", "x"], parse "hello")
                      ,(["foo", "bar", "baz"], parse "<apply-content/>")]) `shouldRender` "hello"
+    it "should allow blanks in the the template name" $
+      ("<apply template=\"${zone1}\" />",
+       subs [("zone1", textFill "zone1-currentIssue")],
+       M.fromList [(["zone1-currentIssue"], parse "Current Issue")]) `shouldRenderDef` "Current Issue"
 
   describe "overriding HTML tags" $ do
     it "should allow overriden Html tags" $ do
