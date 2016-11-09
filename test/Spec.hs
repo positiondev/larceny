@@ -41,23 +41,23 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
-removeWhitespace :: Text -> Text
-removeWhitespace = T.replace " " ""
+removeSpaces :: Text -> Text
+removeSpaces = T.replace " " ""
 
 shouldRender :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRender (pth, t', s, l) output = do
   rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) pth s l) ()
-  removeWhitespace rendered `shouldBe` removeWhitespace output
+  removeSpaces rendered `shouldBe` removeSpaces output
 
 shouldRenderDef :: (Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderDef (t', s, l) output = do
     rendered <- evalStateT (runTemplate (parse (LT.fromStrict t')) ["default"] s l) ()
-    removeWhitespace rendered `shouldBe` removeWhitespace output
+    removeSpaces rendered `shouldBe` removeSpaces output
 
 shouldRenderCustom :: (Text, Substitutions (), Library (), Overrides) -> Text -> Expectation
 shouldRenderCustom (t', s, l, o) output = do
     rendered <- evalStateT (runTemplate (parseWithOverrides o (LT.fromStrict t')) ["default"] s l) ()
-    removeWhitespace rendered `shouldBe` removeWhitespace output
+    removeSpaces rendered `shouldBe` removeSpaces output
 
 shouldRenderContaining :: ([Text], Text, Substitutions (), Library ()) -> Text -> Expectation
 shouldRenderContaining (pth, t, s, l) excerpt = do
@@ -302,6 +302,13 @@ spec = hspec $ do
             ,("magazine", textFill "BloodAndThunder")
             ,("number", textFill "5")],
        mempty) `shouldRenderDef` "<a href=\"/s/123/BloodAndThunder-5.pdf\">Issue 5</a>"
+
+    it "should strip whitespace from beginning and end" $ do
+      ("<bind tag=\"someAttr\">\n\
+       \        lots of space  \n\
+       \</bind> <p class=\"${someAttr}\"></p>",
+       mempty,
+       mempty) `shouldRenderDef` "<p class=\"lots of space\"></p>"
 
   describe "a large HTML file" $ do
     it "should render large HTML files" $ do
