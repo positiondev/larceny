@@ -101,12 +101,12 @@ import qualified Text.HTML.DOM       as D
 import           Text.Read           (readMaybe)
 import qualified Text.XML            as X
 ------------
-import           Web.Larceny.Html    (html5Nodes)
+import           Web.Larceny.Html    (html5Nodes, html5SelfClosingNodes)
 
 
 -- | Corresponds to a "blank" in the template that can be filled in
--- with some value by running Haskell code.  Blanks can be tags or
--- they can be all or parts of attribute values in tags.
+-- with some value when the template is rendered.  Blanks can be tags
+-- or they can be all or parts of attribute values in tags.
 --
 -- Example blanks:
 --
@@ -182,11 +182,12 @@ type Library s = Map Path (Template s)
 -- Overrides ["marquee", "blink"] ["a"]
 -- @
 data Overrides = Overrides { customPlainNodes :: [Text]
-                           , overrideNodes    :: [Text] }
+                           , overrideNodes    :: [Text]
+                           , selfClosingNodes :: [Text]}
 
 -- | Default uses no overrides.
 defaultOverrides :: Overrides
-defaultOverrides = Overrides mempty mempty
+defaultOverrides = Overrides mempty mempty mempty
 
 -- | Render a template from the library by path.
 --
@@ -528,7 +529,21 @@ processPlain pc tn atr kids = do
   atrs <- attrsToText pc atr
   processed <- process (pc { _pcNodes = kids })
   let tagName = X.nameLocalName tn
-  return $ ["<" <> tagName <> atrs <> ">"]
+  return $ tagToText pc tagName atrs processed
+
+selfClosing :: Overrides -> HS.HashSet Text
+selfClosing (Overrides _ _ sc) =
+  (HS.fromList sc) <> html5SelfClosingNodes
+
+tagToText :: ProcessContext s
+          -> Text
+          -> Text
+          -> [Text]
+          -> [Text]
+tagToText pc tagName atrs processed =
+  if tagName `HS.member` selfClosing (_pcOverrides pc)
+  then ["<" <> tagName <> atrs <> "/>"]
+  else ["<" <> tagName <> atrs <> ">"]
            ++ processed
            ++ ["</" <> tagName <> ">"]
 
