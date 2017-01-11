@@ -43,6 +43,7 @@ html5Nodes = HS.fromList [
     "hgroup", -- heading group NEW
     "header", -- header NEW
     "footer", -- footer NEW
+    "main", -- main VERY NEW (wasn't in the spec linked to above)
     "address", -- contact information
 
 -- 5.5. Grouping content
