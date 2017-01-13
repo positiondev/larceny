@@ -98,3 +98,32 @@ the default `textFill`s escaped and add `rawTextFill` versions.)
 In Heist, `<bind>`s inside of nested template application can be used
 in the outer templates. We found that confusing, so Larceny doesn't
 allow that.
+
+# Troubleshooting
+
+## Locale/`hGetContents`
+
+If your app lives in an environment like Alpine Linux or other
+`locale`-less environment, you may run into this error when templates
+are loaded:
+
+```
+your_app: some_template.tpl: hGetContents: invalid argument (invalid byte sequence)
+```
+
+This probably means that your template has UTF-8 characters in it, but there's no locale set.
+
+You can remedy this by using
+[`setLocaleEncoding`](https://hackage.haskell.org/package/base-4.9.0.0/docs/GHC-IO-Encoding.html#v:setLocaleEncoding)
+from GHC.IO.Encoding, along with an encoding like
+[`utf8`](https://hackage.haskell.org/package/base-4.9.0.0/docs/GHC-IO-Encoding.html#v:utf8).
+
+An example would be:
+
+```
+initializeApp :: IO AppCtxt
+initializeApp = do
+  setLocaleencoding utf8
+  templates <- loadTemplates "templates" defaultOverrides
+  ...
+```
