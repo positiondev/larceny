@@ -149,3 +149,22 @@ html5Nodes = HS.fromList [
     "summary", -- summary, caption, or legend for a details control NEW
     "command", -- command NEW
     "menu"] -- list of commands CHANGED
+
+html5SelfClosingNodes :: HS.HashSet Text
+html5SelfClosingNodes = HS.fromList
+  [ "area"
+  , "base"
+  , "br"
+  , "col"
+  , "command"
+  , "embed"
+  , "hr"
+  , "img"
+  , "input"
+  , "keygen"
+  , "link"
+  , "meta"
+  , "param"
+  , "source"
+  , "track"
+  , "wbr"]

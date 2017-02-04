@@ -12,7 +12,6 @@ import qualified Data.Text.Lazy      as LT
 import           Examples
 import           Test.Hspec
 import           Web.Larceny
-
 main :: IO ()
 main = spec
 
@@ -146,18 +145,23 @@ spec = hspec $ do
       ("<html><div></div></html>",
        subs [("div", textFill "notadivatall")],
        mempty,
-       Overrides mempty ["div"]) `shouldRenderCustom` "<html>not a div at all</html>"
+       Overrides mempty ["div"] mempty) `shouldRenderCustom` "<html>not a div at all</html>"
     it "should allow (nested) overriden Html tags" $ do
       ("<html><custom><div></div></custom></html>",
        subs [("div", textFill "notadivatall")
             ,("custom", fillChildrenWith mempty)],
        mempty,
-       Overrides mempty ["div"]) `shouldRenderCustom` "<html>not a div at all</html>"
+       Overrides mempty ["div"] mempty) `shouldRenderCustom` "<html>not a div at all</html>"
     it "should not need fills for manually added plain nodes" $ do
       ("<html><blink>retro!!</blink></html>",
        mempty,
        mempty,
-       Overrides ["blink"] mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
+       Overrides ["blink"] mempty mempty) `shouldRenderCustom` "<html><blink>retro!!</blink></html>"
+    it "should allow custom self-closing tags" $ do
+      ("<blink />",
+       mempty,
+       mempty,
+       Overrides ["blink"] mempty ["blink"]) `shouldRenderCustom` "<blink />"
 
   describe "bind" $ do
     it "should let you bind tags to fills within templates" $ do
@@ -331,6 +335,12 @@ spec = hspec $ do
        subs [("someHtml", textFill "<strong>Some HTML</strong>")],
        mempty) `shouldRenderDef`
        "<p><strong>Some HTML</strong></p>"
+
+  describe "br" $ do
+    it "should allow self-closing tags" $ do
+      ("<br />",
+       mempty,
+       mempty) `shouldRenderDef` "<br />"
 
 descFill :: Fill ()
 descFill =
