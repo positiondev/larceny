@@ -540,7 +540,7 @@ attrsToText pc attrs =
               unbound =  eUnboundAttrs v
           tuple <- sequence (name, T.concat <$> mapM (fillAttr pc) unbound)
           return $ toText tuple
-        toText (k, v) = " " <> k <> "=\"" <> v <> "\""
+        toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
 fillAttrs :: ProcessContext s -> Map X.Name Text -> StateT s IO (Map X.Name Text)
 fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
