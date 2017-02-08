@@ -1,6 +1,6 @@
 # Larceny
 
-Larceny is Haskell templating based on [Heist](heist).
+Larceny is Haskell HTML templating based on [Heist](heist).
 
 With Larceny, you write templates that look like this:
 
@@ -80,7 +80,7 @@ You end up with HTML like this:
 Position Dev loves Heist templates!
 
 But then we needed unescaped HTML in our templates... so we had to
-use compiled Heist. Compiled Heist is really hard to undestand.
+use Compiled Heist. Compiled Heist is really hard to undestand.
 
 We wrote Larceny as an alternative to compiled Heist that is easier to
 understand and use (if slower).
@@ -92,8 +92,10 @@ from Heist, but we tried to make the templates themselves as similar
 as possible, with a couple notable exceptions:
 
 Larceny is different from Interpreted Heist (but similar to Compiled
-Heist) in that it doesn't escape any text. (This may change to make
-the default `textFill`s escaped and add `rawTextFill` versions.)
+Heist) in that, by default, it doesn't escape any text. The `textFill`
+helper function which you'll most commonly use does escape t, but
+if you write your own more complicated Fills, you'll need to remember
+to escape the text yourself.
 
 In Heist, `<bind>`s inside of nested template application can be used
 in the outer templates. We found that confusing, so Larceny doesn't
@@ -123,7 +125,7 @@ An example would be:
 ```
 initializeApp :: IO AppCtxt
 initializeApp = do
-  setLocaleencoding utf8
+  setLocaleEncoding utf8
   templates <- loadTemplates "templates" defaultOverrides
   ...
 ```

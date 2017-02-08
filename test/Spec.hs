@@ -330,9 +330,15 @@ spec = hspec $ do
        `shouldReturn` Just "12"
 
   describe "escaping" $ do
-    it "should not escape html" $ do
+    it "should escape html in textFill" $ do
       ("<p><someHtml /></p>",
        subs [("someHtml", textFill "<strong>Some HTML</strong>")],
+       mempty) `shouldRenderDef`
+       "<p>&lt;strong&gt;Some HTML&lt;/strong&gt;</p>"
+
+    it "should not escape html with rawTextFill" $ do
+      ("<p><someHtml /></p>",
+       subs [("someHtml", rawTextFill "<strong>Some HTML</strong>")],
        mempty) `shouldRenderDef`
        "<p><strong>Some HTML</strong></p>"
 
