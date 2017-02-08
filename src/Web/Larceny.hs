@@ -533,7 +533,7 @@ processPlain pc tn atr kids = do
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
-  (HS.fromList sc) <> html5SelfClosingNodes
+  HS.fromList sc <> html5SelfClosingNodes
 
 tagToText :: ProcessContext s
           -> Text
@@ -552,22 +552,26 @@ attrsToText pc attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
           let name = X.nameLocalName k
-              unbound =  eUnboundAttrs v
-          tuple <- sequence (name, T.concat <$> mapM (fillAttr pc) unbound)
-          return $ toText tuple
+              (unboundK, unboundV) =  eUnboundAttrs (k,v)
+          keys <- T.concat <$> mapM (fillAttr pc) unboundK
+          vals <- T.concat <$> mapM (fillAttr pc) unboundV
+          return $ toText (keys, vals)
+        toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
 fillAttrs :: ProcessContext s -> Map X.Name Text -> StateT s IO (Map X.Name Text)
 fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
-  where fill (k, v) = do
-          let unbound =  eUnboundAttrs v
-          sequence (k, T.concat <$> mapM (fillAttr pc) unbound)
+  where fill p = do
+          let (unboundKeys, unboundValues) = eUnboundAttrs p
+          keys <- T.concat <$> mapM (fillAttr pc) unboundKeys
+          vals <- T.concat <$> mapM (fillAttr pc) unboundValues
+          return (X.Name keys Nothing Nothing, vals)
 
 fillAttr :: ProcessContext s -> Either Text Blank -> StateT s IO Text
 fillAttr (ProcessContext _ m l o _ _) eBlankText =
   case eBlankText of
     Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
-    Left text  -> return text
+    Left text -> return text
 
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -645,18 +649,20 @@ findUnbound o (X.NodeElement (X.Element name atr kids):ns) =
 findUnbound o (_:ns) = findUnbound o ns
 
 findUnboundAttrs :: Map X.Name Text -> [Blank]
-findUnboundAttrs atrs = rights $ concatMap (eUnboundAttrs . snd) (M.toList atrs)
+findUnboundAttrs atrs =
+  rights $ concatMap (uncurry (<>) . eUnboundAttrs) (M.toList atrs)
 
-eUnboundAttrs :: Text -> [Either Text Blank]
-eUnboundAttrs value = do
-  let possibleWords = T.splitOn "${" value
+eUnboundAttrs :: (X.Name, Text) -> ([Either Text Blank], [Either Text Blank])
+eUnboundAttrs (X.Name n _ _, value) = do
+  let possibleWords = T.splitOn "${"
   let mWord w =
         case T.splitOn "}" w of
           [_] -> [Left w]
           ["",_] -> [Left ("${" <> w)]
           (word: rest) -> Right (Blank word) : map Left rest
           _ -> [Left w]
-  concatMap mWord possibleWords
+  ( concatMap mWord (possibleWords n)
+    , concatMap mWord (possibleWords value))
 
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
