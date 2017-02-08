@@ -551,8 +551,7 @@ attrsToText :: ProcessContext s -> Map X.Name Text -> StateT s IO Text
 attrsToText pc attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
-          let name = X.nameLocalName k
-              (unboundK, unboundV) =  eUnboundAttrs (k,v)
+          let (unboundK, unboundV) =  eUnboundAttrs (k,v)
           keys <- T.concat <$> mapM (fillAttr pc) unboundK
           vals <- T.concat <$> mapM (fillAttr pc) unboundV
           return $ toText (keys, vals)
