@@ -342,6 +342,19 @@ spec = hspec $ do
        mempty,
        mempty) `shouldRenderDef` "<br />"
 
+  describe "selected" $ do
+    it "should allow attributes that aren't k-v pairs" $ do
+      ("<option selected>Hello</option>",
+       mempty,
+       mempty) `shouldRenderDef` "<option selected>Hello</option>"
+
+    it "should allow blanks in attributes that aren't k-v pairs" $ do
+      ("<option ${selectedA}>Option A</option> \
+      \ <option ${selectedB}>Option B</option>",
+       subs [("selectedA", textFill ""), ("selectedB", textFill "selected")],
+       mempty) `shouldRenderDef`
+        "<option >Option A</option><option selected>Option B</option>"
+
 descFill :: Fill ()
 descFill =
   useAttrs (a"length" % a"ending") descFunc
