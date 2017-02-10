@@ -4,4 +4,5 @@ packages:
 extra-deps:
 - directory-1.2.6.3
 - text-1.2.2.1
+- html-entities-1.1.2
 resolver: lts-5.14

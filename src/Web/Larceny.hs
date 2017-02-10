@@ -63,6 +63,8 @@ module Web.Larceny ( Blank(..)
                    , subs
                    , textFill
                    , textFill'
+                   , rawTextFill
+                   , rawTextFill'
                    , mapSubs
                    , mapSubs'
                    , fillChildren
@@ -95,6 +97,7 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as ST
 import qualified Data.Text.Lazy      as LT
+import qualified HTMLEntities.Text   as HE
 import           System.Directory    (doesDirectoryExist, listDirectory)
 import           System.FilePath     (dropExtension, takeExtension)
 import qualified Text.HTML.DOM       as D
@@ -257,10 +260,18 @@ subs = M.fromList . map (\(x, y) -> (Blank x, y))
 -- | A plain text fill.
 --
 -- @
--- textFill "This text will be displayed in place of the blank"
+-- textFill "This text will be escaped and displayed in place of the blank"
 -- @
 textFill :: Text -> Fill s
 textFill t = textFill' (return t)
+
+-- | A plain text fill.
+--
+-- @
+-- textFill "This text will be displayed in place of the blank, <em>unescaped</em>"
+-- @
+rawTextFill :: Text -> Fill s
+rawTextFill t = rawTextFill' (return t)
 
 -- | Use state or IO, then fill in some text.
 --
@@ -269,7 +280,16 @@ textFill t = textFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_m _t _l -> t
+textFill' t = Fill $ \_m _t _l -> HE.text <$> t
+
+-- | Use state or IO, then fill in some text.
+--
+-- @
+-- -- getTextFromDatabase :: StateT () IO Text
+-- textFill' getTextFromDatabase
+-- @
+rawTextFill' :: StateT s IO Text -> Fill s
+rawTextFill' t = Fill $ \_m _t _l -> t
 
 -- | Create substitutions for each element in a list and fill the child nodes
 -- with those substitutions.
@@ -611,7 +631,7 @@ processApply pc@(ProcessContext pth m l o _ _) atr kids = do
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- runTemplate (mk o kids) pth m l
   let contentSub = subs [("apply-content",
-                         textFill contentTpl)]
+                         rawTextFill contentTpl)]
   sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
 
 data ApplyError = ApplyError Path Path deriving (Eq)

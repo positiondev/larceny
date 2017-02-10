@@ -32,6 +32,7 @@ library
                      , filepath
                      , mtl
                      , exceptions
+                     , html-entities
   hs-source-dirs:      src
   default-language:    Haskell2010
 
