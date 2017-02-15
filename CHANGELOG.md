@@ -2,4 +2,4 @@
 
 ## 2/8/2017
 
-* `textFill` now escapes HTML entities.
+* `textFill` now escapes HTML entities, `rawTextFill` added
