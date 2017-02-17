@@ -20,11 +20,11 @@ newtype Fill s = Fill { unFill :: Attributes
                                -> StateT s IO Text }
 ```
 
-1) `Attributes` -- these are the attributes of the Blank as an HTML
+1. `Attributes` -- these are the attributes of the Blank as an HTML
 tag.
-2) `(Path, Template s)` -- the child elements of the Blank and
+2. `(Path, Template s)` -- the child elements of the Blank and
 the template's path.
-3) `Library s` -- The template library
+3. `Library s` -- The template library
 
 And given these ingredients, the function will give you `StateT s IO
 Text`. This complicated type is so that you can store and change state
