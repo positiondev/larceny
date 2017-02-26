@@ -1,0 +1,12 @@
+flags: {}
+packages:
+- '.'
+- location:
+    git: https://github.com/positiondev/larceny
+    commit: 69c6db140b212a0a68b0b0dfd4c7cbcc56f72f69
+  extra-dep: true
+extra-deps:
+- directory-1.2.6.3
+- text-1.2.2.1
+
+resolver: lts-5.14
