@@ -20,7 +20,7 @@ library
   exposed-modules:     Web.Larceny
                      , Web.Larceny.Html
   other-extensions:    OverloadedStrings
-  build-depends:       base >=4.8 && <4.9
+  build-depends:       base >=4.8 && <4.10
                      , containers >=0.5 && <0.6
                      , unordered-containers
                      , hashable
