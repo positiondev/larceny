@@ -87,6 +87,7 @@ import           Control.Monad       (filterM)
 import           Control.Monad.State (StateT, evalStateT)
 import           Data.Either
 import           Data.Hashable       (Hashable)
+import           Data.HashSet        (HashSet)
 import qualified Data.HashSet        as HS
 import           Data.Map            (Map)
 import qualified Data.Map            as M
@@ -477,20 +478,23 @@ parseWithOverrides o t =
 -- | Turn HTML nodes and overrides into templates.
 mk :: Overrides -> [X.Node] -> Template s
 mk o nodes =
-  let unbound = findUnbound o nodes in
+  let allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
+                      `HS.difference` HS.fromList (overrideNodes o) in
+  let unbound = findUnbound allPlainNodes nodes in
   Template $ \pth m l ->
     need pth m unbound <$>
-    (T.concat <$> process (ProcessContext pth m l o unbound nodes))
+    (T.concat <$> process (ProcessContext pth m l o unbound allPlainNodes nodes))
 
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
 
-data ProcessContext s = ProcessContext { _pcPath      :: Path
-                                       , _pcSubs      :: Substitutions s
-                                       , _pcLib       :: Library s
-                                       , _pcOverrides :: Overrides
-                                       , _pcUnbound   :: [Blank]
-                                       , _pcNodes     :: [X.Node] }
+data ProcessContext s = ProcessContext { _pcPath          :: Path
+                                       , _pcSubs          :: Substitutions s
+                                       , _pcLib           :: Library s
+                                       , _pcOverrides     :: Overrides
+                                       , _pcUnbound       :: [Blank]
+                                       , _pcAllPlainNodes :: HashSet Text
+                                       , _pcNodes         :: [X.Node]}
 
 data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
 instance Show MissingBlanks where
@@ -513,8 +517,8 @@ add mouter tpl =
 
 process :: ProcessContext s ->
            StateT s IO [Text]
-process (ProcessContext _ _ _ _ _ []) = return []
-process pc@(ProcessContext _ _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
+process (ProcessContext _ _ _ _ _ _ []) = return []
+process pc@(ProcessContext _ _ _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
   processBind (pc { _pcNodes = ns }) atr kids
 process pc = do
   let (currentNode: nextNodes) = _pcNodes pc
@@ -522,7 +526,7 @@ process pc = do
   processedNode <-
     case currentNode of
       X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
-      X.NodeElement (X.Element tn atr kids) | isPlain tn (_pcOverrides pc)
+      X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain nextPc tn atr kids
       X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
       X.NodeContent t                            -> return [t]
@@ -530,13 +534,6 @@ process pc = do
       X.NodeInstruction _                        -> return []
   restOfNodes <- process nextPc
   return $ processedNode ++ restOfNodes
-
-isPlain :: X.Name -> Overrides -> Bool
-isPlain tn os =
-  let allPlainNodes = (HS.fromList (customPlainNodes os) `HS.union`
-                       html5Nodes)
-                      `HS.difference` HS.fromList (overrideNodes os) in
-  HS.member (X.nameLocalName tn) allPlainNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
@@ -587,7 +584,7 @@ fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
           return (X.Name keys Nothing Nothing, vals)
 
 fillAttr :: ProcessContext s -> Either Text Blank -> StateT s IO Text
-fillAttr (ProcessContext _ m l o _ _) eBlankText =
+fillAttr (ProcessContext _ m l o _ _ _) eBlankText =
   case eBlankText of
     Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
     Left text -> return text
@@ -601,7 +598,7 @@ processFancy :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processFancy pc@(ProcessContext pth m l o _ _) tn atr kids =
+processFancy pc@(ProcessContext pth m l o _ _ _) tn atr kids =
   let tagName = X.nameLocalName tn in do
   filled <- fillAttrs pc atr
   sequence [ unFill (fillIn tagName m)
@@ -612,11 +609,11 @@ processBind :: ProcessContext s ->
                Map X.Name Text ->
                [X.Node] ->
                StateT s IO [Text]
-processBind (ProcessContext pth m l o unbound nodes) atr kids =
+processBind (ProcessContext pth m l o unbound nodes plain) atr kids =
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mk o kids) pth m l)] in
-  process (ProcessContext pth (newSubs `M.union` m) l o unbound nodes)
+  process (ProcessContext pth (newSubs `M.union` m) l o unbound nodes plain)
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
@@ -626,7 +623,7 @@ processApply :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processApply pc@(ProcessContext pth m l o _ _) atr kids = do
+processApply pc@(ProcessContext pth m l o _ _ _) atr kids = do
   filledAttrs <- fillAttrs pc atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- runTemplate (mk o kids) pth m l
@@ -656,16 +653,16 @@ findTemplate lib [] targetPath = (targetPath, M.lookup targetPath lib)
 findTemplate lib pth' targetPath =
   case M.lookup (pth' ++ targetPath) lib of
     Just tpl -> (pth' ++ targetPath, Just tpl)
-    Nothing -> findTemplate lib (init pth') targetPath
+    Nothing  -> findTemplate lib (init pth') targetPath
 
-findUnbound :: Overrides -> [X.Node] -> [Blank]
+findUnbound :: HashSet Text -> [X.Node] -> [Blank]
 findUnbound _ [] = []
-findUnbound o (X.NodeElement (X.Element name atr kids):ns) =
+findUnbound plainNodes (X.NodeElement (X.Element name atr kids):ns) =
      let tn = X.nameLocalName name in
-     if tn == "apply" || tn == "bind" || isPlain name o
-     then findUnboundAttrs atr ++ findUnbound o kids
-     else Blank tn : findUnboundAttrs atr ++ findUnbound o ns
-findUnbound o (_:ns) = findUnbound o ns
+     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
+     then findUnboundAttrs atr ++ findUnbound plainNodes kids
+     else Blank tn : findUnboundAttrs atr ++ findUnbound plainNodes ns
+findUnbound plainNodes (_:ns) = findUnbound plainNodes ns
 
 findUnboundAttrs :: Map X.Name Text -> [Blank]
 findUnboundAttrs atrs =
