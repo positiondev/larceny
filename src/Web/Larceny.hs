@@ -526,12 +526,14 @@ processPlain :: ProcessContext s ->
                 [X.Node] ->
                 (Path -> Substitutions s -> Library s -> StateT s IO [Text])
 processPlain pc tn atr kids = do
-  atrs <- attrsToText pc atr
-  processed <- process (pc { _pcNodes = kids })
+  let mkattrs = attrsToText pc atr
+  let runkids = process (pc { _pcNodes = kids })
   let tagName = X.nameLocalName tn
-  return $ ["<" <> tagName <> atrs <> ">"]
-           ++ processed
-           ++ ["</" <> tagName <> ">"]
+  let open = "<" <> tagName
+  let close = "</" <> tagName <> ">"
+  \p m l -> do attrs <- mkattrs p m l
+               processed <- runkids p m l
+               return $ [open] ++ attrs ++ [">"] ++ processed ++ [close]
 
 compress :: [Either Text Blank] -> [Either Text Blank]
 compress [] = []
