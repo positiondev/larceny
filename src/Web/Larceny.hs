@@ -477,13 +477,13 @@ parseWithOverrides o t =
 
 -- | Turn HTML nodes and overrides into templates.
 mk :: Overrides -> [X.Node] -> Template s
-mk o nodes =
-  let allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
-                      `HS.difference` HS.fromList (overrideNodes o) in
-  let unbound = findUnbound allPlainNodes nodes in
-  Template $ \pth m l ->
-    need pth m unbound <$>
-    (T.concat <$> process (ProcessContext pth m l o unbound allPlainNodes nodes))
+mk o = f
+  where allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
+                        `HS.difference` HS.fromList (overrideNodes o)
+        f nodes = let unbound = findUnbound allPlainNodes nodes in
+          Template $ \pth m l ->
+                       need pth m unbound <$>
+                       (T.concat <$> process (ProcessContext pth m l o unbound allPlainNodes f nodes))
 
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
@@ -494,6 +494,7 @@ data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcOverrides     :: Overrides
                                        , _pcUnbound       :: [Blank]
                                        , _pcAllPlainNodes :: HashSet Text
+                                       , _pcMk            :: [X.Node] -> Template s
                                        , _pcNodes         :: [X.Node]}
 
 data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
@@ -517,8 +518,8 @@ add mouter tpl =
 
 process :: ProcessContext s ->
            StateT s IO [Text]
-process (ProcessContext _ _ _ _ _ _ []) = return []
-process pc@(ProcessContext _ _ _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
+process (ProcessContext _ _ _ _ _ _ _ []) = return []
+process pc@(ProcessContext _ _ _ _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
   processBind (pc { _pcNodes = ns }) atr kids
 process pc = do
   let (currentNode: nextNodes) = _pcNodes pc
@@ -584,9 +585,9 @@ fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
           return (X.Name keys Nothing Nothing, vals)
 
 fillAttr :: ProcessContext s -> Either Text Blank -> StateT s IO Text
-fillAttr (ProcessContext _ m l o _ _ _) eBlankText =
+fillAttr (ProcessContext _ m l _ _ _ mko _) eBlankText =
   case eBlankText of
-    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mk o []) l
+    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
     Left text -> return text
 
 
@@ -598,22 +599,22 @@ processFancy :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processFancy pc@(ProcessContext pth m l o _ _ _) tn atr kids =
+processFancy pc@(ProcessContext pth m l _ _ _ mko _) tn atr kids =
   let tagName = X.nameLocalName tn in do
   filled <- fillAttrs pc atr
   sequence [ unFill (fillIn tagName m)
                     (M.mapKeys X.nameLocalName filled)
-                    (pth, add m (mk o kids)) l]
+                    (pth, add m (mko kids)) l]
 
 processBind :: ProcessContext s ->
                Map X.Name Text ->
                [X.Node] ->
                StateT s IO [Text]
-processBind (ProcessContext pth m l o unbound nodes plain) atr kids =
+processBind (ProcessContext pth m l o unbound plain mko nodes) atr kids =
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mk o kids) pth m l)] in
-  process (ProcessContext pth (newSubs `M.union` m) l o unbound nodes plain)
+                                       runTemplate (mko kids) pth m l)] in
+  process (ProcessContext pth (newSubs `M.union` m) l o unbound plain mko nodes)
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
@@ -623,10 +624,10 @@ processApply :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 StateT s IO [Text]
-processApply pc@(ProcessContext pth m l o _ _ _) atr kids = do
+processApply pc@(ProcessContext pth m l _ _ _ mko _) atr kids = do
   filledAttrs <- fillAttrs pc atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
-  contentTpl <- runTemplate (mk o kids) pth m l
+  contentTpl <- runTemplate (mko kids) pth m l
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
   sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
