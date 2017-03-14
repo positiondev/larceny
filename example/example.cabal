@@ -15,8 +15,14 @@ executable          scotty-example
                   , wai
                   , wai-middleware-static
                   , text
+                  , bytestring
+                  , html-conduit
+                  , xml-conduit
                   , transformers
                   , http-types
+                  , blaze-html
+                  , blaze-markup
+                  , time
 
 executable          fn-example
     hs-source-dirs: .
@@ -30,6 +36,12 @@ executable          fn-example
                   , wai
                   , wai-middleware-static
                   , warp
+                  , bytestring
+                  , html-conduit
+                  , xml-conduit
                   , text
                   , transformers
                   , http-types
+                  , blaze-html
+                  , blaze-markup
+                  , time

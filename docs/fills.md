@@ -1,4 +1,4 @@
-# Writing Fills
+g# Writing Fills
 
 Fills are how you fill-in the Blanks in your [templates](templates).
 
@@ -43,6 +43,8 @@ import Control.Monad.State (evalStateT)
 
 type MyState = [Text]
 
+
+
 initialState :: [Text]
 initialState = ["hello"]
 
@@ -51,9 +53,8 @@ aFill = Fill myFill
   where myFill attributes (path, template) library =
           return "some text"
 
-fillToText :: Fill MyState -> IO Text
-fillToText someFill =
-  evalStateT someFill attributes pthtpl library initialState
+fillToText :: Fill MyState -> StateT MyState IO Text
+fillToText someFill = unFill someFill attr (pth, template) library
 ```
 
 ### Attributes
