@@ -542,11 +542,16 @@ processPlain :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
                 (Substitutions s -> StateT s IO [Text])
-processPlain pc tn atr kids = \m -> do
-  atrs <- attrsToText pc atr m
-  processed <- process (pc { _pcNodes = kids }) m
-  let tagName = X.nameLocalName tn
-  return $ tagToText pc tagName (T.concat atrs) processed
+processPlain pc tn atr kids =
+  let atrf = attrsToText pc atr
+      chldf = process (pc { _pcNodes = kids })
+      tagName = X.nameLocalName tn
+      pre = ["<" <> tagName]
+      mid = if tagName `HS.member` selfClosing (_pcOverrides pc) then  ["/>"] else [">"]
+      close = if tagName `HS.member` selfClosing (_pcOverrides pc) then  [""] else ["</" <> tagName <> ">"] in
+    \m -> do atrs <- atrf m
+             childs <- chldf m
+             return $ concat [pre, atrs, mid, childs, close]
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
