@@ -73,6 +73,7 @@ benchmark bench
                      , lens
                      , either
                      , bytestring
+                     , time
                      , mtl
                      , directory >= 1.2.5
                      , filepath
