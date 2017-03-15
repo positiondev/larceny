@@ -546,7 +546,7 @@ processPlain pc tn atr kids = \m -> do
   atrs <- attrsToText pc atr m
   processed <- process (pc { _pcNodes = kids }) m
   let tagName = X.nameLocalName tn
-  return $ tagToText pc tagName atrs processed
+  return $ tagToText pc tagName (T.concat atrs) processed
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
@@ -564,16 +564,46 @@ tagToText pc tagName atrs processed =
            ++ processed
            ++ ["</" <> tagName <> ">"]
 
-attrsToText :: ProcessContext s -> Map X.Name Text -> (Substitutions s -> StateT s IO Text)
-attrsToText pc attrs m =
-  T.concat <$> mapM attrToText (M.toList attrs)
-  where attrToText (k,v) = do
-          let (unboundK, unboundV) =  eUnboundAttrs (k,v)
-          keys <- T.concat <$> mapM (\e -> fillAttr pc e m) unboundK
-          vals <- T.concat <$> mapM (\e -> fillAttr pc e m) unboundV
-          return $ toText (keys, vals)
-        toText (k, "") = " " <> k
-        toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
+data TextBlank = TText Text | TBlank Text | TStrip TextBlanks deriving Eq
+
+type TextBlanks = [TextBlank]
+
+compress :: TextBlanks -> TextBlanks
+compress [] = []
+compress [TText ""] = []
+compress (TStrip [] : rest) = compress rest
+compress (TStrip [TText t] : rest) = compress (TText (T.strip t) : rest)
+compress (TStrip [TStrip bs] : rest) = compress (TStrip bs : rest)
+compress (TStrip ts : rest) =
+  let ts' = compress ts in
+    if ts' /= ts then compress (TStrip ts' : rest)
+    else TStrip ts' : compress rest
+compress [x] = [x]
+compress (TText x : TText y : rest) = compress (TText (x <> y) : rest)
+compress (x : y : rest) = x : compress (y : rest)
+
+slurp :: ProcessContext s -> Template s -> TextBlanks -> (Substitutions s -> StateT s IO [Text])
+slurp _ _ [] _ = return []
+slurp pc empty (TText t : rest) m = do rt <- slurp pc empty rest m
+                                       return (t : rt)
+slurp pc empty (TBlank hole : rest) m = do rt <- slurp pc empty rest m
+                                           t <- unFill (fillIn hole m) mempty ([], empty) (_pcLib pc)
+                                           return (t : rt)
+slurp pc empty (TStrip bs : rest) m = do t <- slurp pc empty bs m
+                                         rt <- slurp pc empty rest m
+                                         return (T.strip (T.concat t) : rt)
+
+
+attrsToText :: ProcessContext s -> Map X.Name Text -> (Substitutions s -> StateT s IO [Text])
+attrsToText pc attrs =
+  let !tofill = compress (concatMap attrToText (M.toList attrs)) in
+  slurp pc (_pcMk pc []) tofill
+  where attrToText a =
+          let (unboundKeys, unboundValues) = eUnboundAttrs a
+              mid = if unboundValues == [TText ""] then [] else
+                      TText "=\"" : [TStrip unboundValues] ++ [TText "\""] in
+          (TText " " : unboundKeys ++ mid)
+
 
 fillAttrs :: ProcessContext s -> Map X.Name Text -> (Substitutions s -> StateT s IO (Map X.Name Text))
 fillAttrs pc attrs m = M.fromList <$> mapM fill (M.toList attrs)
@@ -583,11 +613,11 @@ fillAttrs pc attrs m = M.fromList <$> mapM fill (M.toList attrs)
           vals <- T.concat <$> mapM (\e -> fillAttr pc e m) unboundValues
           return (X.Name keys Nothing Nothing, vals)
 
-fillAttr :: ProcessContext s -> Either Text Blank -> (Substitutions s -> StateT s IO Text)
+fillAttr :: ProcessContext s -> TextBlank -> (Substitutions s -> StateT s IO Text)
 fillAttr (ProcessContext _ l _ _ _ mko _) eBlankText m = 
   case eBlankText of
-    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
-    Left text -> return text
+    TBlank hole -> unFill (fillIn hole m) mempty ([], mko []) l
+    TText text -> return text
 
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -664,19 +694,25 @@ findUnbound plainNodes (X.NodeElement (X.Element name atr kids):ns) =
      else Blank tn : findUnboundAttrs atr ++ findUnbound plainNodes ns
 findUnbound plainNodes (_:ns) = findUnbound plainNodes ns
 
+
+blanks :: TextBlanks -> [Blank]
+blanks [] = []
+blanks (TBlank b : rest) = Blank b : blanks rest
+blanks (_ : rest) = blanks rest
+
 findUnboundAttrs :: Map X.Name Text -> [Blank]
 findUnboundAttrs atrs =
-  rights $ concatMap (uncurry (<>) . eUnboundAttrs) (M.toList atrs)
+  blanks $ concatMap (uncurry (<>) . eUnboundAttrs) (M.toList atrs)
 
-eUnboundAttrs :: (X.Name, Text) -> ([Either Text Blank], [Either Text Blank])
+eUnboundAttrs :: (X.Name, Text) -> (TextBlanks, TextBlanks)
 eUnboundAttrs (X.Name n _ _, value) = do
   let possibleWords = T.splitOn "${"
   let mWord w =
         case T.splitOn "}" w of
-          [_] -> [Left w]
-          ["",_] -> [Left ("${" <> w)]
-          (word: rest) -> Right (Blank word) : map Left rest
-          _ -> [Left w]
+          [_] -> [TText w]
+          ["",_] -> [TText ("${" <> w)]
+          (word: rest) -> TBlank word : map TText rest
+          _ -> [TText w]
   ( concatMap mWord (possibleWords n)
     , concatMap mWord (possibleWords value))
 
