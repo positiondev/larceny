@@ -2,6 +2,7 @@
 
 import           Blaze.ByteString.Builder
 import           Control.Lens
+import           Control.Monad.State
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Either
 import           Criterion.Main
@@ -12,6 +13,7 @@ import           Data.ByteString.Lazy       (toStrict)
 import qualified Data.HashMap.Strict        as H
 import           Data.Text                  (Text)
 import           Data.Text.Encoding         (decodeUtf8, encodeUtf8)
+import qualified Data.Text.Lazy             as LT
 import           Examples
 import           Heist
 import qualified Heist.Compiled             as HC
@@ -19,10 +21,12 @@ import           Heist.Internal.Types
 import qualified Heist.Interpreted          as HI
 import qualified Text.XmlHtml               as X
 
-import           Larceny
+import           Web.Larceny
 
-main :: IO ()
-main =
+main = runBench
+
+runBench :: IO ()
+runBench =
   defaultMainWith (defaultConfig {reportFile = Just "report.html"}) [
       bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
                          , bench "simple blank" $ nfIO $ runTpl tpl2
@@ -39,10 +43,10 @@ main =
     ]
 
 runTpl :: Text -> IO Text
-runTpl x = runTemplate (parse x) subst tplLib
+runTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst tplLib) ()
 
 runBigTpl :: Text -> IO Text
-runBigTpl x = runTemplate (parse x) subst positionTplLib
+runBigTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst positionTplLib) ()
 
 splicesI :: MonadIO m => Splices (HI.Splice m)
 splicesI = do "site-title" ## siteTitleSpliceI
