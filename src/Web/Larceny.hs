@@ -484,7 +484,7 @@ mk o = f
         f nodes = let !unbound = findUnbound allPlainNodes nodes
                       !bodyf = process (ProcessContext o unbound allPlainNodes f nodes) in
                     Template $ \pth m l ->
-                                 need pth m unbound <$> (T.concat <$> bodyf (RenderContext pth l m))
+                                 need pth m unbound <$> (T.concat <$> force bodyf (f []) (RenderContext pth l m f))
 
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
@@ -497,7 +497,8 @@ data ProcessContext s = ProcessContext { _pcOverrides     :: Overrides
 
 data RenderContext s = RenderContext { _rcPath :: Path
                                      , _rcLib  :: Library s
-                                     , _rcSubs :: Substitutions s}
+                                     , _rcSubs :: Substitutions s
+                                     , _rcMk            :: [X.Node] -> Template s}
 
 data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
 instance Show MissingBlanks where
@@ -518,58 +519,20 @@ add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
-process :: ProcessContext s ->
-           (RenderContext s -> StateT s IO [Text])
-process (ProcessContext  _ _ _ _ []) = \_ -> return []
-process pc@(ProcessContext _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
-  \m -> processBind (pc { _pcNodes = ns }) atr kids m
-process pc = 
-  let (currentNode: nextNodes) = _pcNodes pc
-      nextPc = pc { _pcNodes = nextNodes}
-      curf = case currentNode of
-               X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
-               X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
-                                                          -> processPlain nextPc tn atr kids
-               X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
-               X.NodeContent t                            -> \_ -> return [t]
-               X.NodeComment c                            -> \_ -> return ["<!--" <> c <> "-->"]
-               X.NodeInstruction _                        -> \_ -> return []
-      restf = process nextPc in
-  \m -> (++) <$> curf m <*> restf m
+data TextTemplate s = Function (RenderContext s -> StateT s IO [Text]) | Flat !TextBlanks
 
--- Add the open tag and attributes, process the children, then close
--- the tag.
-processPlain :: ProcessContext s ->
-                X.Name ->
-                Map X.Name Text ->
-                [X.Node] ->
-                (RenderContext s -> StateT s IO [Text])
-processPlain pc tn atr kids =
-  let atrf = attrsToText pc atr
-      chldf = process (pc { _pcNodes = kids })
-      tagName = X.nameLocalName tn
-      pre = ["<" <> tagName]
-      mid = if tagName `HS.member` selfClosing (_pcOverrides pc) then  ["/>"] else [">"]
-      close = if tagName `HS.member` selfClosing (_pcOverrides pc) then  [""] else ["</" <> tagName <> ">"] in
-    \m -> do atrs <- atrf m
-             childs <- chldf m
-             return $ concat [pre, atrs, mid, childs, close]
+force :: TextTemplate s -> Template s -> RenderContext s -> StateT s IO [Text]
+force (Flat bs) empty m = slurp empty bs m
+force (Function f) _ m = f m
 
-selfClosing :: Overrides -> HS.HashSet Text
-selfClosing (Overrides _ _ sc) =
-  HS.fromList sc <> html5SelfClosingNodes
-
-tagToText :: ProcessContext s
-          -> Text
-          -> Text
-          -> [Text]
-          -> [Text]
-tagToText pc tagName atrs processed =
-  if tagName `HS.member` selfClosing (_pcOverrides pc)
-  then ["<" <> tagName <> atrs <> "/>"]
-  else ["<" <> tagName <> atrs <> ">"]
-           ++ processed
-           ++ ["</" <> tagName <> ">"]
+instance Monoid (TextTemplate s) where
+  mempty = Flat []
+  mappend t1 t2 = 
+    case (t1, t2) of
+      (Flat bs1, Flat bs2) -> Flat (compress (bs1 <> bs2))
+      (Flat bs, Function f) -> Function $ \m -> (++) <$> (slurp (_rcMk m []) bs m) <*> f m
+      (Function f, Flat bs) -> Function $ \m -> (++) <$> f m <*> (slurp (_rcMk m []) bs m)
+      (Function f1, Function f2) -> Function $ \m -> (++) <$> f1 m <*> f2 m
 
 data TextBlank = TText Text | TBlank Text | TStrip TextBlanks deriving Eq
 
@@ -589,17 +552,67 @@ compress [x] = [x]
 compress (TText x : TText y : rest) = compress (TText (x <> y) : rest)
 compress (x : y : rest) = x : compress (y : rest)
 
-slurp :: ProcessContext s -> Template s -> TextBlanks -> (RenderContext s -> StateT s IO [Text])
-slurp _ _ [] _ = return []
-slurp pc empty (TText t : rest) m = do rt <- slurp pc empty rest m
-                                       return (t : rt)
-slurp pc empty (TBlank hole : rest) m = do rt <- slurp pc empty rest m
-                                           t <- unFill (fillIn hole (_rcSubs m)) mempty ([], empty) (_rcLib m)
-                                           return (t : rt)
-slurp pc empty (TStrip bs : rest) m = do t <- slurp pc empty bs m
-                                         rt <- slurp pc empty rest m
-                                         return (T.strip (T.concat t) : rt)
+slurp :: Template s -> TextBlanks -> (RenderContext s -> StateT s IO [Text])
+slurp _ [] _ = return []
+slurp empty (TText t : rest) m = do rt <- slurp empty rest m
+                                    return (t : rt)
+slurp empty (TBlank hole : rest) m = do rt <- slurp empty rest m
+                                        t <- unFill (fillIn hole (_rcSubs m)) mempty ([], empty) (_rcLib m)
+                                        return (t : rt)
+slurp empty (TStrip bs : rest) m = do t <- slurp empty bs m
+                                      rt <- slurp empty rest m
+                                      return (T.strip (T.concat t) : rt)
 
+
+process :: ProcessContext s -> TextTemplate s
+process (ProcessContext  _ _ _ _ []) = Flat []
+process pc@(ProcessContext _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
+  processBind (pc { _pcNodes = ns }) atr kids
+process pc = 
+  let (currentNode : nextNodes) = _pcNodes pc
+      nextPc = pc { _pcNodes = nextNodes}
+      !curf = case currentNode of
+               X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
+               X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
+                                                          -> processPlain nextPc tn atr kids
+               X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
+               X.NodeContent t                            -> Flat [TText t]
+               X.NodeComment c                            -> Flat [TText $ "<!--" <> c <> "-->"]
+               X.NodeInstruction _                        -> Flat []
+      !restf = process nextPc in
+    curf <> restf
+
+-- Add the open tag and attributes, process the children, then close
+-- the tag.
+processPlain :: ProcessContext s ->
+                X.Name ->
+                Map X.Name Text ->
+                [X.Node] ->
+                TextTemplate s
+processPlain pc tn atr kids =
+  let atrf = attrsToText pc atr
+      !chldf = process (pc { _pcNodes = kids })
+      tagName = X.nameLocalName tn
+      pre = Flat [TText $ "<" <> tagName]
+      mid = Flat $ if tagName `HS.member` selfClosing (_pcOverrides pc) then [TText "/>"] else [TText ">"]
+      close = Flat $ if tagName `HS.member` selfClosing (_pcOverrides pc) then  [TText ""] else [TText $ "</" <> tagName <> ">"] in
+    mconcat [pre, atrf, mid, chldf, close]
+
+selfClosing :: Overrides -> HS.HashSet Text
+selfClosing (Overrides _ _ sc) =
+  HS.fromList sc <> html5SelfClosingNodes
+
+tagToText :: ProcessContext s
+          -> Text
+          -> Text
+          -> [Text]
+          -> [Text]
+tagToText pc tagName atrs processed =
+  if tagName `HS.member` selfClosing (_pcOverrides pc)
+  then ["<" <> tagName <> atrs <> "/>"]
+  else ["<" <> tagName <> atrs <> ">"]
+           ++ processed
+           ++ ["</" <> tagName <> ">"]
 
 parseAttrs :: Map X.Name Text -> TextBlanks
 parseAttrs attrs = compress (concatMap attrToText (M.toList attrs))
@@ -610,10 +623,9 @@ parseAttrs attrs = compress (concatMap attrToText (M.toList attrs))
           (TText " " : unboundKeys ++ mid)
 
 
-attrsToText :: ProcessContext s -> Map X.Name Text -> (RenderContext s -> StateT s IO [Text])
+attrsToText :: ProcessContext s -> Map X.Name Text -> TextTemplate s
 attrsToText pc attrs =
-  let !tofill = parseAttrs attrs in
-  slurp pc (_pcMk pc []) tofill
+  Flat (parseAttrs attrs)
 
 
 fillAttrs :: ProcessContext s -> Map X.Name Text -> (RenderContext s -> StateT s IO (Map X.Name Text))
@@ -638,8 +650,8 @@ processFancy :: ProcessContext s ->
                 X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
-                (RenderContext s -> StateT s IO [Text])
-processFancy pc@(ProcessContext _ _ _ mko _) tn atr kids = \m ->
+                TextTemplate s
+processFancy pc@(ProcessContext _ _ _ mko _) tn atr kids = Function $ \m ->
   let tagName = X.nameLocalName tn in do
   filled <- fillAttrs pc atr m
   sequence [ unFill (fillIn tagName (_rcSubs m))
@@ -649,12 +661,13 @@ processFancy pc@(ProcessContext _ _ _ mko _) tn atr kids = \m ->
 processBind :: ProcessContext s ->
                Map X.Name Text ->
                [X.Node] ->
-               (RenderContext s -> StateT s IO [Text])
-processBind (ProcessContext o unbound plain mko nodes) atr kids = \m ->
+               TextTemplate s
+processBind (ProcessContext o unbound plain mko nodes) atr kids = Function $ \m ->
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mko kids) (_rcPath m) (_rcSubs m) (_rcLib m))] in
-  process (ProcessContext o unbound plain mko nodes) (m { _rcSubs = newSubs `M.union` (_rcSubs m)})
+                                       runTemplate (mko kids) (_rcPath m) (_rcSubs m) (_rcLib m))]
+      ctxt = m { _rcSubs = newSubs `M.union` (_rcSubs m)} in
+  force (process (ProcessContext o unbound plain mko nodes)) (mko []) ctxt
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
@@ -663,14 +676,14 @@ processBind (ProcessContext o unbound plain mko nodes) atr kids = \m ->
 processApply :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
-                (RenderContext s -> StateT s IO [Text])
+                TextTemplate s
 processApply pc@(ProcessContext _ _ _ mko _) atr kids =
-  \m -> do filledAttrs <- fillAttrs pc atr m
-           let (absolutePath, tplToApply) = findTemplateFromAttrs (_rcPath m) (_rcLib m) filledAttrs
-           contentTpl <- runTemplate (mko kids) (_rcPath m) (_rcSubs m) (_rcLib m)
-           let contentSub = subs [("apply-content",
-                                   rawTextFill contentTpl)]
-           sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` (_rcSubs m)) (_rcLib m) ]
+  Function $ \m -> do filledAttrs <- fillAttrs pc atr m
+                      let (absolutePath, tplToApply) = findTemplateFromAttrs (_rcPath m) (_rcLib m) filledAttrs
+                      contentTpl <- runTemplate (mko kids) (_rcPath m) (_rcSubs m) (_rcLib m)
+                      let contentSub = subs [("apply-content",
+                                              rawTextFill contentTpl)]
+                      sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` (_rcSubs m)) (_rcLib m) ]
 
 data ApplyError = ApplyError Path Path deriving (Eq)
 instance Show ApplyError where
