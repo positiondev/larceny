@@ -563,6 +563,12 @@ slurp empty (TStrip bs : rest) m = do t <- slurp empty bs m
                                       rt <- slurp empty rest m
                                       return (T.strip (T.concat t) : rt)
 
+ttjoin :: [TextTemplate s] -> TextTemplate s
+ttjoin [] = mempty
+ttjoin [x] = x
+ttjoin (Flat bs1 : Flat bs2 : rest) = ttjoin (Flat bs1 <> Flat bs2 : rest)
+ttjoin (Function f : Flat bs : rest) = Function f <> (ttjoin (Flat bs : rest))
+ttjoin (t1 : rest) = t1 <> ttjoin rest
 
 process :: ProcessContext s -> TextTemplate s
 process (ProcessContext  _ _ _ _ []) = Flat []
@@ -596,7 +602,7 @@ processPlain pc tn atr kids =
       pre = Flat [TText $ "<" <> tagName]
       mid = Flat $ if tagName `HS.member` selfClosing (_pcOverrides pc) then [TText "/>"] else [TText ">"]
       close = Flat $ if tagName `HS.member` selfClosing (_pcOverrides pc) then  [TText ""] else [TText $ "</" <> tagName <> ">"] in
-    mconcat [pre, atrf, mid, chldf, close]
+    ttjoin [pre, atrf, mid, chldf, close]
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
