@@ -36,21 +36,26 @@ runBench = do
   es <- read . LT.unpack <$> TIO.readFile "test/entries.txt"
   ps <- read . LT.unpack <$> TIO.readFile "test/people.txt"
   let entries = mapSubs (entrySubs ps) es
+  let htSplices = HI.mapSplices (entrySplices ps) es
   defaultMainWith (defaultConfig {reportFile = Just "report.html"}) [
-      bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
-                         , bench "simple blank" $ nfIO $ runTpl tpl2
-                         , bench "applyTemplate" $ nfIO $ runTpl tpl3
-                         , bench "mapFills" $ nfIO $ runTpl tpl4
-                         , bench "funFill" $ nfIO $ runTpl tpl5
-                         , bench "lots of html" $ nfIO $ runBigTpl tpl6]
-    , bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
+    {-  bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
+                             , bench "simple blank" $ nfIO $ runTpl tpl2
+                             , bench "applyTemplate" $ nfIO $ runTpl tpl3
+                             , bench "mapFills" $ nfIO $ runTpl tpl4
+                             , bench "funFill" $ nfIO $ runTpl tpl5
+                             , bench "lots of html" $ nfIO $ runBigTpl tpl6]-}
+     bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
     , bgroup "interpreted heist" [
-         bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
-       , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
-       , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
+    --     bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
+    --   , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
+    --   , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
+        bench "housetab" $ nfIO (doHeist' "list" htSplices)
        ]
       -- still need compiled Heist
     ]
+
+
+housetabSplices ps es = HI.mapSplices (entrySplices ps) es
 
 renderTpl :: Library () -> [Entry] -> [Person] -> IO (Maybe Text)
 renderTpl lib es ps = renderWith lib (subs [("entries", mapSubs (entrySubs ps) es)]) () ["list"]
@@ -60,7 +65,6 @@ runTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst t
 
 runBigTpl :: Text -> IO Text
 runBigTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst positionTplLib) ()
-
 
 data Person = Person { id        :: Int
                      , accountId :: Int
@@ -106,6 +110,31 @@ splicesI = do "site-title" ## siteTitleSpliceI
               "skater"     ## skaterSplicesI
               "skaters"    ## skatersSpliceI
     --        "desc"       ## descSplice
+
+
+
+entrySplices :: MonadIO m => [Person] -> Entry -> Splices (HI.Splice m) 
+entrySplices ps (Entry i a w desc dt hm wps) =
+  do "id" ## HI.textSplice (tshow i)
+     "account-id" ## HI.textSplice (tshow a)
+     "who" ## HI.textSplice (name (getP w))
+     "description" ## HI.textSplice desc
+     "date" ## HI.textSplice
+                   (T.pack $ formatTime
+                               defaultTimeLocale
+                               "%Y-%m-%d"
+                               dt)
+     "howmuch" ## HI.textSplice "blah"
+     "whopays" ## HI.mapSplices (\(isl, pi) ->
+                                   HI.runChildrenWith $
+                                     do "id" ## HI.textSplice (tshow pi)
+                                        "name" ## HI.textSplice (name (getP pi))
+                                        "sep" ## HI.textSplice $ if isl
+                                                                 then ""
+                                                                 else ",")
+                                (zip (replicate (length wps - 1) False ++ repeat True) wps)
+  where getP i = fromJust $ lookup i (map (\p -> (Main.id p, p)) ps)
+
 
 siteTitleSpliceI :: MonadIO m => HI.Splice m
 siteTitleSpliceI = HI.textSplice "Gotham Girls roster"
@@ -187,3 +216,22 @@ hTplRepo tplName htpl =
   where parsed = fmap (\x -> DocumentFile x mBSTplName) docFile
         mBSTplName = Just (unpack tplName)
         docFile = X.parseHTML (unpack tplName) (encodeUtf8 htpl)
+
+
+doHeist' :: BS.ByteString -> Splices (HI.Splice IO) -> IO Text
+doHeist' tplName splices = do
+  eitherHs <- runEitherT $ initHeist $ heistConf' splices
+  let hs = case eitherHs of
+            Left e -> error $ concat e
+            Right x -> x
+  mTextMIME <- HI.renderTemplate hs tplName
+  case mTextMIME of
+   Nothing -> error "blah"
+   Just (html,_) -> return $ decodeUtf8 $ toStrict $ toLazyByteString html
+
+heistConf' :: Splices (HI.Splice IO) -> HeistConfig IO
+heistConf' splices = HeistConfig sc "" False
+  where
+    sc = mempty &
+         scInterpretedSplices .~ splices &
+         scTemplateLocations .~ [ Heist.loadTemplates "test"]
