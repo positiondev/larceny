@@ -185,6 +185,11 @@ data Overrides = Overrides { customPlainNodes :: [Text]
                            , overrideNodes    :: [Text]
                            , selfClosingNodes :: [Text]}
 
+instance Monoid Overrides where
+  mempty = Overrides [] [] []
+  mappend (Overrides a b c) (Overrides a' b' c') =
+    Overrides (a <> a') (b <> b') (c <> c')
+
 -- | Default uses no overrides.
 defaultOverrides :: Overrides
 defaultOverrides = Overrides mempty mempty mempty
