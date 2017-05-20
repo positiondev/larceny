@@ -9,12 +9,8 @@
 {-# LANGUAGE TypeSynonymInstances #-}
 
 
-import           Control.Concurrent.MVar (MVar, modifyMVar_, newEmptyMVar,
-                                          newMVar, putMVar, readMVar, takeMVar,
-                                          tryTakeMVar)
-import           Control.DeepSeq         (force)
-import           Control.Exception       (Exception, SomeException, catch,
-                                          evaluate, throw, try)
+import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
+import           Control.Exception       (Exception, catch, throw, try)
 import           Control.Lens
 import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
                                           runStateT)
@@ -34,7 +30,6 @@ import           Web.Larceny
 
 data LarcenyState =
   LarcenyState { _lPath      :: [Text]
-               , _lTpl       :: Text
                , _lSubs      :: Substitutions ()
                , _lLib       :: Library ()
                , _lOverrides :: Overrides }
@@ -49,15 +44,9 @@ data LarcenyHspecState =
 
 makeLenses ''LarcenyHspecState
 
-instance Monoid LarcenyState where
-  mempty =
-    LarcenyState [] "" mempty mempty defaultOverrides
-  mappend (LarcenyState p t s l o) (LarcenyState p' t' s' l' o') =
-    LarcenyState (p <> p') (t <> t') (s <> s') (l <> l') (o <> o')
-
 instance H.Example (LarcenyHspecM ()) where
   type Arg (LarcenyHspecM ()) = LarcenyHspecState
-  evaluateExample s params actionWithToIO progCallback =
+  evaluateExample s _params actionWithToIO _progCallback =
     do mv <- newEmptyMVar
        actionWithToIO $ \st ->
          do r <- catch
@@ -69,11 +58,11 @@ instance H.Example (LarcenyHspecM ()) where
 
 withLarceny :: SpecWith LarcenyHspecState
             -> Spec
-withLarceny spec =
+withLarceny spec' =
   let larcenyHspecState =
-        LarcenyHspecState H.Success (LarcenyState ["default"] "" mempty mempty mempty) in
+        LarcenyHspecState H.Success (LarcenyState ["default"] mempty mempty mempty) in
   afterAll return $
-    before (return larcenyHspecState) spec
+    before (return larcenyHspecState) spec'
 
 setResult :: H.Result -> LarcenyHspecM ()
 setResult r = case r of
@@ -110,7 +99,7 @@ removeSpaces = T.replace " " ""
 
 renderM :: Text -> LarcenyHspecM Text
 renderM templateText = do
-  (LarcenyHspecState _ (LarcenyState p _ s l o)) <- S.get
+  (LarcenyHspecState _ (LarcenyState p s l o)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
   liftIO $ evalStateT (runTemplate tpl p s l) ()
 
@@ -135,11 +124,11 @@ shouldErrorM templateText p =
    do hspecState <- S.get
       let renderAttempt = evalStateT (renderM templateText) hspecState
       result <- liftIO $ do
-        let veryForce it = do !result <- renderAttempt
-                              print result
-        r <- try (veryForce renderAttempt)
+        let forceRenderAttempt = do !result <- renderAttempt
+                                    print result
+        r <- try forceRenderAttempt
         case r of
-          Right b ->
+          Right _ ->
                return $ H.Fail Nothing $
                  "rendered successfully instead of throwing expected exception: " <>
                  exceptionType
@@ -396,6 +385,8 @@ spec = hspec $ do
         "<option ${selectedA}>Option A</option> \
         \ <option ${selectedB}>Option B</option>" `shouldRenderM`
           "<option >Option A</option><option selected>Option B</option>"
+
+      attrTests
 
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
