@@ -28,7 +28,6 @@ import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
 
 import           Web.Larceny
-import qualified Web.LarcenyBS
 
 data LarcenyState =
   LarcenyState { _lPath      :: [Text]
