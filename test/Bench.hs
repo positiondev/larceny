@@ -35,27 +35,22 @@ runBench = do
   lib <- Web.Larceny.loadTemplates "test" defaultOverrides
   es <- read . LT.unpack <$> TIO.readFile "test/entries.txt"
   ps <- read . LT.unpack <$> TIO.readFile "test/people.txt"
-  let entries = mapSubs (entrySubs ps) es
   let htSplices = HI.mapSplices (entrySplices ps) es
   defaultMainWith (defaultConfig {reportFile = Just "report.html"}) [
-    {-  bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
-                             , bench "simple blank" $ nfIO $ runTpl tpl2
-                             , bench "applyTemplate" $ nfIO $ runTpl tpl3
-                             , bench "mapFills" $ nfIO $ runTpl tpl4
-                             , bench "funFill" $ nfIO $ runTpl tpl5
-                             , bench "lots of html" $ nfIO $ runBigTpl tpl6]-}
-     bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
+      bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
+                           , bench "simple blank" $ nfIO $ runTpl tpl2
+                           , bench "applyTemplate" $ nfIO $ runTpl tpl3
+                           , bench "mapFills" $ nfIO $ runTpl tpl4
+                           , bench "funFill" $ nfIO $ runTpl tpl5
+                           , bench "lots of html" $ nfIO $ runBigTpl tpl6]
+    , bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
     , bgroup "interpreted heist" [
-    --     bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
-    --   , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
-    --   , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
-        bench "housetab" $ nfIO (doHeist' "list" htSplices)
+         bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
+       , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
+       , bench "mapFills" $ nfIO (doHeist "tpl4" tpl4)
+       , bench "housetab" $ nfIO (doHeist' "list" htSplices)
        ]
-      -- still need compiled Heist
     ]
-
-
-housetabSplices ps es = HI.mapSplices (entrySplices ps) es
 
 renderTpl :: Library () -> [Entry] -> [Person] -> IO (Maybe Text)
 renderTpl lib es ps = renderWith lib (subs [("entries", mapSubs (entrySubs ps) es)]) () ["list"]
