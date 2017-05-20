@@ -370,10 +370,32 @@ spec = hspec $ do
         tpl6 `shouldRenderContainingM` "Verso Books"
 
     describe "escaping" $ do
-      it "should not escape html" $ do
-        hLarcenyState.lSubs .= subs [("someHtml", textFill "<strong>Some HTML</strong>")]
+      it "should escape html in textFill" $ do
+        hLarcenyState.lSubs .= 
+         subs [("someHtml", textFill "<strong>Some HTML</strong>")]
+        "  <p><someHtml /></p>" `shouldRenderM`
+           "<p>&lt;strong&gt;Some HTML&lt;/strong&gt;</p>"
+
+      it "should not escape html with rawTextFill" $ do
+        hLarcenyState.lSubs .= 
+         subs [("someHtml", rawTextFill "<strong>Some HTML</strong>")]
         "<p><someHtml /></p>" `shouldRenderM`
-          "<p><strong>Some HTML</strong></p>"
+         "<p><strong>Some HTML</strong></p>"
+
+    describe "br" $ do
+      it "should allow self-closing tags" $ do
+        "<br />" `shouldRenderM` "<br />"
+
+    describe "selected" $ do
+      it "should allow attributes that aren't k-v pairs" $ do
+        "<option selected>Hello</option>" `shouldRenderM` "<option selected>Hello</option>"
+
+      it "should allow blanks in attributes that aren't k-v pairs" $ do
+        hLarcenyState.lSubs .=
+          subs [("selectedA", textFill ""), ("selectedB", textFill "selected")]
+        "<option ${selectedA}>Option A</option> \
+        \ <option ${selectedB}>Option B</option>" `shouldRenderM`
+          "<option >Option A</option><option selected>Option B</option>"
 
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
@@ -385,6 +407,7 @@ spec = hspec $ do
                     0
                     ["default"]
          `shouldReturn` Just "12"
+
 
 attrTests :: SpecWith LarcenyHspecState
 attrTests =

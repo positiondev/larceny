@@ -2,6 +2,7 @@
 
 import           Blaze.ByteString.Builder
 import           Control.Lens
+import           Control.Monad.State
 import           Control.Monad.Trans
 import           Control.Monad.Trans.Either
 import           Criterion.Main
@@ -10,8 +11,14 @@ import qualified Data.ByteString            as BS
 import           Data.ByteString.Char8      (unpack)
 import           Data.ByteString.Lazy       (toStrict)
 import qualified Data.HashMap.Strict        as H
+import           Data.Maybe
 import           Data.Text                  (Text)
+import qualified Data.Text                  as T
 import           Data.Text.Encoding         (decodeUtf8, encodeUtf8)
+import qualified Data.Text.Lazy             as LT
+import qualified Data.Text.Lazy.IO          as TIO
+import           Data.Time.Clock
+import           Data.Time.Format
 import           Examples
 import           Heist
 import qualified Heist.Compiled             as HC
@@ -19,10 +26,16 @@ import           Heist.Internal.Types
 import qualified Heist.Interpreted          as HI
 import qualified Text.XmlHtml               as X
 
-import           Larceny
+import           Web.Larceny
 
-main :: IO ()
-main =
+main = runBench
+
+runBench :: IO ()
+runBench = do
+  lib <- Web.Larceny.loadTemplates "test" defaultOverrides
+  es <- read . LT.unpack <$> TIO.readFile "test/entries.txt"
+  ps <- read . LT.unpack <$> TIO.readFile "test/people.txt"
+  let entries = mapSubs (entrySubs ps) es
   defaultMainWith (defaultConfig {reportFile = Just "report.html"}) [
       bgroup "runTemplate" [ bench "no blanks" $ nfIO $ runTpl tpl1
                          , bench "simple blank" $ nfIO $ runTpl tpl2
@@ -30,6 +43,7 @@ main =
                          , bench "mapFills" $ nfIO $ runTpl tpl4
                          , bench "funFill" $ nfIO $ runTpl tpl5
                          , bench "lots of html" $ nfIO $ runBigTpl tpl6]
+    , bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
     , bgroup "interpreted heist" [
          bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
        , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
@@ -38,11 +52,53 @@ main =
       -- still need compiled Heist
     ]
 
+renderTpl :: Library () -> [Entry] -> [Person] -> IO (Maybe Text)
+renderTpl lib es ps = renderWith lib (subs [("entries", mapSubs (entrySubs ps) es)]) () ["list"]
+
 runTpl :: Text -> IO Text
-runTpl x = runTemplate (parse x) subst tplLib
+runTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst tplLib) ()
 
 runBigTpl :: Text -> IO Text
-runBigTpl x = runTemplate (parse x) subst positionTplLib
+runBigTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst positionTplLib) ()
+
+
+data Person = Person { id        :: Int
+                     , accountId :: Int
+                     , name      :: Text
+                     } deriving (Eq, Show, Read, Ord)
+
+
+data Entry = Entry { entryId        :: Int
+                   , entryAccountId :: Int
+                   , whoId          :: Int
+                   , description    :: Text
+                   , date           :: UTCTime
+                   , howmuch        :: Double
+                   , whopaysIds     :: [Int]
+                   } deriving (Eq, Show, Read)
+
+entrySubs :: [Person] -> Entry -> Substitutions ()
+entrySubs ps (Entry i a w desc dt hm wps) =
+  subs [("id", textFill (tshow i))
+       ,("account-id", textFill (tshow a))
+       ,("who", textFill (name (getP w)))
+       ,("description", textFill desc)
+       ,("date", textFill
+                   (T.pack $ formatTime
+                               defaultTimeLocale
+                               "%Y-%m-%d"
+                               dt))
+       ,("howmuch", textFill "blah")
+       ,("whopays", mapSubs (\(isl, pi) -> subs [("id", textFill (tshow pi))
+                                                ,("name", textFill (name (getP pi)))
+                                                ,("sep", textFill $ if isl
+                                                                       then ""
+                                                                       else ",")])
+                              (zip (replicate (length wps - 1) False ++ repeat True) wps))]
+  where getP i = fromJust $ lookup i (map (\p -> (Main.id p, p)) ps)
+
+tshow = T.pack . show
+
 
 splicesI :: MonadIO m => Splices (HI.Splice m)
 splicesI = do "site-title" ## siteTitleSpliceI

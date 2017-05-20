@@ -73,7 +73,7 @@ tplLib :: Library ()
 tplLib = M.fromList [(["skater"], parse "Beyonslay")]
 
 tpl5 :: Text
-tpl5 = "<desc length=\"10\" text=\"A really long description\" />"
+tpl5 = "<shorten length=\"10\">A really long description</shorten>"
 
 tpl6 :: Text
 tpl6 = "<!doctype html>\n\
