@@ -125,7 +125,7 @@ shouldErrorM templateText p =
       let renderAttempt = evalStateT (renderM templateText) hspecState
       result <- liftIO $ do
         let forceRenderAttempt = do !result <- renderAttempt
-                                    print result
+                                    return result
         r <- try forceRenderAttempt
         case r of
           Right _ ->
