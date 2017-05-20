@@ -1,4 +1,4 @@
-g# Writing Fills
+# Writing Fills
 
 Fills are how you fill-in the Blanks in your [templates](templates).
 

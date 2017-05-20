@@ -25,7 +25,7 @@ Here is an example of a template with a "Blank":
   <div id="header"><myPageTitle /></div>
 ```
 
-`<myPageTitle />` is blank labeled `myPageTitle`.
+`<myPageTitle />` is a blank labeled `myPageTitle`.
 
 You can also put Blanks in attributes:
 

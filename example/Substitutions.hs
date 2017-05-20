@@ -5,8 +5,6 @@ module Substitutions where
 import           Data.Monoid      ((<>))
 import qualified Data.Text        as T
 import qualified Data.Text.Lazy   as LT
-import           Data.Time.Clock
-import qualified Text.Blaze.Html5 as H
 import           Text.HTML.DOM
 import           Text.XML
 import           Web.Larceny

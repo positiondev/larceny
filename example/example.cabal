@@ -19,9 +19,7 @@ executable          scotty-example
                   , html-conduit
                   , xml-conduit
                   , transformers
-                  , http-types
-                  , blaze-html
-                  , blaze-markup
+                  , http-types 
                   , time
 
 executable          fn-example
@@ -41,7 +39,5 @@ executable          fn-example
                   , xml-conduit
                   , text
                   , transformers
-                  , http-types
-                  , blaze-html
-                  , blaze-markup
+                  , http-types 
                   , time
