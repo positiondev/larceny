@@ -97,6 +97,7 @@ import qualified Data.Set            as S
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.IO        as ST
+import qualified Data.Text.Lazy.Builder as BLT
 import qualified Data.Text.Lazy      as LT
 import qualified HTMLEntities.Text   as HE
 import           System.Directory    (doesDirectoryExist, listDirectory)
@@ -148,7 +149,7 @@ newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
 newtype Fill s = Fill { unFill :: Attributes
                                -> (Path, Template s)
                                -> Library s
-                               -> StateT s IO Text }
+                               -> StateT s IO BLT.Builder }
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
@@ -166,7 +167,7 @@ type Substitutions s = Map Blank (Fill s)
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
                                             -> Library s
-                                            -> StateT s IO Text }
+                                            -> StateT s IO BLT.Builder }
 
 -- | The path to a template.
 type Path = [Text]
@@ -230,8 +231,10 @@ renderWith l sub s = renderRelative l sub s []
 renderRelative :: Library s -> Substitutions s -> s -> Path -> Path -> IO (Maybe Text)
 renderRelative l sub s givenPath targetPath =
   case findTemplate l givenPath targetPath of
-    (pth, Just (Template run)) -> Just <$> evalStateT (run pth sub l) s
+    (pth, Just (Template run)) -> Just <$> toText <$> evalStateT (run pth sub l) s
     (_, Nothing) -> return Nothing
+
+toText = LT.toStrict . BLT.toLazyText
 
 -- | Load all the templates in some directory into a Library.
 loadTemplates :: FilePath -> Overrides -> IO (Library s)
@@ -286,7 +289,7 @@ rawTextFill t = rawTextFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_m _t _l -> HE.text <$> t
+textFill' t = Fill $ \_m _t _l -> BLT.fromText <$> HE.text <$> t
 
 -- | Use state or IO, then fill in some text.
 --
@@ -295,7 +298,7 @@ textFill' t = Fill $ \_m _t _l -> HE.text <$> t
 -- textFill' getTextFromDatabase
 -- @
 rawTextFill' :: StateT s IO Text -> Fill s
-rawTextFill' t = Fill $ \_m _t _l -> t
+rawTextFill' t = Fill $ \_m _t _l -> BLT.fromText <$> t
 
 -- | Create substitutions for each element in a list and fill the child nodes
 -- with those substitutions.
@@ -311,16 +314,20 @@ mapSubs :: (a -> Substitutions s)
         -> [a]
         -> Fill s
 mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
-    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
+    fromList <$> mapM (\n -> runTemplate tpl pth (f n) lib) xs
+
+fromList :: [BLT.Builder] -> BLT.Builder
+fromList [] = mempty
+fromList (x:xs) = x <> fromList xs
 
 -- | Create substitutions for each element in a list (using IO/state if
 -- needed) and fill the child nodes with those substitutions.
 mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
 mapSubs' f xs = Fill $
   \_m (pth, tpl) lib ->
-    T.concat <$>  mapM (\x -> do
-                           s' <- f x
-                           runTemplate tpl pth s' lib) xs
+    fromList  <$>  mapM (\x -> do
+                            s' <- f x
+                            runTemplate tpl pth s' lib) xs
 
 -- | Fill in the child nodes of the blank with substitutions already
 -- available.
@@ -486,9 +493,9 @@ mk o = f
   where allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
                         `HS.difference` HS.fromList (overrideNodes o)
         f nodes = let unbound = findUnbound allPlainNodes nodes in
-          Template $ \pth m l ->
+          Template $ \pth m l -> BLT.fromText <$> 
                        need pth m unbound <$>
-                       (T.concat <$> process (ProcessContext pth m l o unbound allPlainNodes f nodes))
+                       (toText <$> process (ProcessContext pth m l o unbound allPlainNodes f nodes))
 
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
@@ -522,8 +529,8 @@ add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
 process :: ProcessContext s ->
-           StateT s IO [Text]
-process (ProcessContext _ _ _ _ _ _ _ []) = return []
+           StateT s IO BLT.Builder
+process (ProcessContext _ _ _ _ _ _ _ []) = return mempty
 process pc@(ProcessContext _ _ _ _ _ _ _ (X.NodeElement (X.Element "bind" atr kids):ns)) =
   processBind (pc { _pcNodes = ns }) atr kids
 process pc = do
@@ -535,11 +542,14 @@ process pc = do
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain nextPc tn atr kids
       X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
-      X.NodeContent t                            -> return [t]
-      X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
-      X.NodeInstruction _                        -> return []
+      X.NodeContent t                            -> return $ BLT.fromText t
+      X.NodeComment c                            -> return $ BLT.fromText $ "<!--" <> c <> "-->"
+      X.NodeInstruction _                        -> return $ mempty
   restOfNodes <- process nextPc
-  return $ processedNode ++ restOfNodes
+  return $ processedNode <> restOfNodes
+
+blah :: [Text] -> [BLT.Builder]
+blah list = map BLT.fromText list
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
@@ -547,7 +557,7 @@ processPlain :: ProcessContext s ->
                 X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
-                StateT s IO [Text]
+                StateT s IO BLT.Builder
 processPlain pc tn atr kids = do
   atrs <- attrsToText pc atr
   processed <- process (pc { _pcNodes = kids })
@@ -561,14 +571,18 @@ selfClosing (Overrides _ _ sc) =
 tagToText :: ProcessContext s
           -> Text
           -> Text
-          -> [Text]
-          -> [Text]
+          -> BLT.Builder
+          -> BLT.Builder
 tagToText pc tagName atrs processed =
   if tagName `HS.member` selfClosing (_pcOverrides pc)
-  then ["<" <> tagName <> atrs <> "/>"]
-  else ["<" <> tagName <> atrs <> ">"]
-           ++ processed
-           ++ ["</" <> tagName <> ">"]
+  then BLT.fromText $ "<" <> tagName <> atrs <> "/>"
+  else (BLT.fromText $ "<" <> tagName <> atrs <> ">")
+           `mappend` processed
+           `mappend` (BLT.fromText $ "</" <> tagName <> ">")
+
+listToBuilder :: [Text] -> BLT.Builder
+listToBuilder [] = mempty
+listToBulder (x:xs) = BLT.fromText x <> listToBuilder xs
 
 attrsToText :: ProcessContext s -> Map X.Name Text -> StateT s IO Text
 attrsToText pc attrs =
@@ -592,7 +606,7 @@ fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
 fillAttr :: ProcessContext s -> Either Text Blank -> StateT s IO Text
 fillAttr (ProcessContext _ m l _ _ _ mko _) eBlankText =
   case eBlankText of
-    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
+    Right (Blank hole) -> LT.toStrict <$> BLT.toLazyText <$> unFill (fillIn hole m) mempty ([], mko []) l
     Left text -> return text
 
 
@@ -603,22 +617,21 @@ processFancy :: ProcessContext s ->
                 X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
-                StateT s IO [Text]
+                StateT s IO BLT.Builder
 processFancy pc@(ProcessContext pth m l _ _ _ mko _) tn atr kids =
   let tagName = X.nameLocalName tn in do
   filled <- fillAttrs pc atr
-  sequence [ unFill (fillIn tagName m)
-                    (M.mapKeys X.nameLocalName filled)
-                    (pth, add m (mko kids)) l]
+  unFill (fillIn tagName m)
+    (M.mapKeys X.nameLocalName filled)
+    (pth, add m (mko kids)) l
 
 processBind :: ProcessContext s ->
                Map X.Name Text ->
                [X.Node] ->
-               StateT s IO [Text]
+               StateT s IO BLT.Builder
 processBind (ProcessContext pth m l o unbound plain mko nodes) atr kids =
   let tagName = atr M.! "tag"
-      newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mko kids) pth m l)] in
+      newSubs = subs [(tagName, Fill $ \_a _t _l -> runTemplate (mko kids) pth m l)] in
   process (ProcessContext pth (newSubs `M.union` m) l o unbound plain mko nodes)
 
 -- Look up the template that's supposed to be applied in the library,
@@ -628,14 +641,14 @@ processBind (ProcessContext pth m l o unbound plain mko nodes) atr kids =
 processApply :: ProcessContext s ->
                 Map X.Name Text ->
                 [X.Node] ->
-                StateT s IO [Text]
+                StateT s IO BLT.Builder
 processApply pc@(ProcessContext pth m l _ _ _ mko _) atr kids = do
   filledAttrs <- fillAttrs pc atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- runTemplate (mko kids) pth m l
   let contentSub = subs [("apply-content",
-                         rawTextFill contentTpl)]
-  sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+                         rawTextFill $ LT.toStrict $ BLT.toLazyText contentTpl)]
+  runTemplate tplToApply absolutePath (contentSub `M.union` m) l
 
 data ApplyError = ApplyError Path Path deriving (Eq)
 instance Show ApplyError where
