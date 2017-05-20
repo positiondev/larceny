@@ -386,7 +386,7 @@ spec = hspec $ do
         \ <option ${selectedB}>Option B</option>" `shouldRenderM`
           "<option >Option A</option><option selected>Option B</option>"
 
-      attrTests
+    attrTests
 
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
