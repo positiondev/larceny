@@ -1,0 +1,43 @@
+name:          example
+version:       0.0.0
+cabal-version: >= 1.8
+build-type:    Simple
+
+executable          scotty-example
+    hs-source-dirs: .
+    main-is:        Scotty.hs
+    other-modules:  Data, Substitutions
+    ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
+    extensions:     OverloadedStrings
+    build-depends:  base   >= 4      && < 5
+                  , scotty >= 0.10.0 && < 0.11
+                  , larceny
+                  , wai
+                  , wai-middleware-static
+                  , text
+                  , bytestring
+                  , html-conduit
+                  , xml-conduit
+                  , transformers
+                  , http-types 
+                  , time
+
+executable          fn-example
+    hs-source-dirs: .
+    main-is:        Fn.hs
+    other-modules:  Data, Substitutions
+    ghc-options:    -Wall -threaded -O2 -rtsopts -with-rtsopts=-N
+    extensions:     OverloadedStrings
+    build-depends:  base   >= 4      && < 5
+                  , fn
+                  , larceny
+                  , wai
+                  , wai-middleware-static
+                  , warp
+                  , bytestring
+                  , html-conduit
+                  , xml-conduit
+                  , text
+                  , transformers
+                  , http-types 
+                  , time
