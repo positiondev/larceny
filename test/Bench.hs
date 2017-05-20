@@ -26,6 +26,7 @@ import           Heist.Internal.Types
 import qualified Heist.Interpreted          as HI
 import qualified Text.XmlHtml               as X
 
+import qualified Web.LarcenyBS as Fast
 import           Web.Larceny
 
 main = runBench
@@ -33,6 +34,7 @@ main = runBench
 runBench :: IO ()
 runBench = do
   lib <- Web.Larceny.loadTemplates "test" defaultOverrides
+  fastLib <- Fast.loadTemplates "test" Fast.defaultOverrides
   es <- read . LT.unpack <$> TIO.readFile "test/entries.txt"
   ps <- read . LT.unpack <$> TIO.readFile "test/people.txt"
   let htSplices = HI.mapSplices (entrySplices ps) es
@@ -44,6 +46,7 @@ runBench = do
                            , bench "funFill" $ nfIO $ runTpl tpl5
                            , bench "lots of html" $ nfIO $ runBigTpl tpl6]
     , bgroup "render" [ bench "housetab example" $ nfIO $ renderTpl lib es ps ]
+    , bgroup "faster render" [ bench "housetab example" $ nfIO $ fastRenderTpl fastLib es ps ]
     , bgroup "interpreted heist" [
          bench "no blanks" $ nfIO (doHeist "tpl1" tpl1)
        , bench "simple blank" $ nfIO (doHeist "tpl2" tpl2)
@@ -54,6 +57,10 @@ runBench = do
 
 renderTpl :: Library () -> [Entry] -> [Person] -> IO (Maybe Text)
 renderTpl lib es ps = renderWith lib (subs [("entries", mapSubs (entrySubs ps) es)]) () ["list"]
+
+
+fastRenderTpl :: Fast.Library () -> [Entry] -> [Person] -> IO (Maybe Text)
+fastRenderTpl lib es ps = Fast.renderWith lib (Fast.subs [("entries", Fast.mapSubs (fastEntrySubs ps) es)]) () ["list"]
 
 runTpl :: Text -> IO Text
 runTpl x = evalStateT (runTemplate (parse $ LT.fromStrict x) ["default"] subst tplLib) ()
@@ -95,6 +102,29 @@ entrySubs ps (Entry i a w desc dt hm wps) =
                                                                        else ",")])
                               (zip (replicate (length wps - 1) False ++ repeat True) wps))]
   where getP i = fromJust $ lookup i (map (\p -> (Main.id p, p)) ps)
+
+fastEntrySubs :: [Person] -> Entry -> Fast.Substitutions ()
+fastEntrySubs ps (Entry i a w desc dt hm wps) =
+  Fast.subs [("id", Fast.textFill (tshow i))
+            ,("account-id", Fast.textFill (tshow a))
+            ,("who", Fast.textFill (name (getP w)))
+            ,("description", Fast.textFill desc)
+            ,("date", Fast.textFill
+                      (T.pack $ formatTime
+                          defaultTimeLocale
+                               "%Y-%m-%d"
+                               dt))
+            ,("howmuch", Fast.textFill "blah")
+            ,("whopays", Fast.mapSubs (\(isl, pi) ->
+                                         Fast.subs [("id", Fast.textFill (tshow pi))
+                                                   ,("name", Fast.textFill (name (getP pi)))
+                                                   ,("sep", Fast.textFill $ if isl
+                                                                            then ""
+                                                                            else ",")])
+                              (zip (replicate (length wps - 1) False ++ repeat True) wps))]
+  where getP i = fromJust $ lookup i (map (\p -> (Main.id p, p)) ps)
+
+
 
 tshow = T.pack . show
 
