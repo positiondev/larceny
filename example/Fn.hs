@@ -56,7 +56,8 @@ larcenyRenderWith ctxt subs' pth = do
 
 larcenyServe :: Ctxt -> IO (Maybe Response)
 larcenyServe ctxt = do
-  mPage <- larcenyRenderWith ctxt mempty (pathInfo . fst . getRequest $ ctxt)
+  let render' path' = larcenyRenderWith ctxt mempty ((pathInfo . fst . getRequest $ ctxt) <> path')
+  mPage <- render' []
   case mPage of
-    Nothing -> larcenyRenderWith ctxt mempty ((pathInfo . fst . getRequest $ ctxt) <> ["index"])
+    Nothing -> render' ["index"]
     Just _ -> return mPage
