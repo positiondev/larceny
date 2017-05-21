@@ -581,8 +581,7 @@ tagToText pc tagName atrs processed =
            `mappend` (BLT.fromText $ "</" <> tagName <> ">")
 
 listToBuilder :: [Text] -> BLT.Builder
-listToBuilder [] = mempty
-listToBulder (x:xs) = BLT.fromText x <> listToBuilder xs
+listToBuilder = foldr (\t b -> b <> BLT.fromText t) mempty
 
 attrsToText :: ProcessContext s -> Map X.Name Text -> StateT s IO Text
 attrsToText pc attrs =
