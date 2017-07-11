@@ -548,9 +548,8 @@ process (currentNode:nextNodes) = do
   put nextPc
   processedNode <-
     case currentNode of
-      X.NodeElement (X.Element "bind" atr kids) ->
-         do processBind nextPc atr kids
-            return []
+      X.NodeElement (X.Element "bind" atr kids)  -> do processBind atr kids
+                                                       return []
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
@@ -633,11 +632,12 @@ processFancy tn atr kids = do
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mko kids)) l]
 
-processBind :: ProcessContext s ->
-               Map X.Name Text ->
+processBind :: Map X.Name Text ->
                [X.Node] ->
                ProcessT s
-processBind (ProcessContext pth m l o unbound plain mko nodes s) atr kids = do
+processBind atr kids = do
+  -- TODO: this is going to be a great place to use lenses ^_^
+  (ProcessContext pth m l o unbound plain mko nodes s) <- get
   let tagName = atr M.! "tag" -- Use the AttrMissing exception
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
