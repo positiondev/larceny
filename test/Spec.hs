@@ -3,7 +3,6 @@
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
-{-# LANGUAGE TemplateHaskell      #-}
 {-# LANGUAGE TypeFamilies         #-}
 {-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -11,7 +10,7 @@
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import           Control.Exception       (Exception, catch, throw, try)
-import           Control.Lens
+import           Lens.Micro
 import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
                                           runStateT)
 import qualified Control.Monad.State     as S
@@ -28,13 +27,25 @@ import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
 import           Web.Larceny
 
+infix  4 .=
+(.=) :: S.MonadState s m => ASetter s s a b -> b -> m ()
+l .= b = modify (l .~ b)
+{-# INLINE (.=) #-}
+
 data LarcenyState =
   LarcenyState { _lPath      :: [Text]
                , _lSubs      :: Substitutions ()
                , _lLib       :: Library ()
                , _lOverrides :: Overrides }
 
-makeLenses ''LarcenyState
+lPath :: Lens' LarcenyState [Text]
+lPath = lens _lPath (\ls p -> ls { _lPath = p })
+lSubs :: Lens' LarcenyState (Substitutions ())
+lSubs = lens _lSubs (\ls s -> ls { _lSubs = s })
+lLib :: Lens' LarcenyState (Library ())
+lLib = lens _lLib (\ls l -> ls { _lLib = l })
+lOverrides :: Lens' LarcenyState Overrides
+lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
 
 type LarcenyHspecM = StateT LarcenyHspecState IO
 
@@ -42,7 +53,10 @@ data LarcenyHspecState =
   LarcenyHspecState { _hResult       :: H.Result
                     , _hLarcenyState :: LarcenyState }
 
-makeLenses ''LarcenyHspecState
+hResult :: Lens' LarcenyHspecState H.Result
+hResult = lens _hResult (\hs r -> hs { _hResult = r })
+hLarcenyState :: Lens' LarcenyHspecState LarcenyState
+hLarcenyState = lens _hLarcenyState (\hs ls -> hs { _hLarcenyState = ls })
 
 instance H.Example (LarcenyHspecM ()) where
   type Arg (LarcenyHspecM ()) = LarcenyHspecState

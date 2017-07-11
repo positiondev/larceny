@@ -83,8 +83,9 @@ module Web.Larceny ( Blank(..)
                    , parseWithOverrides) where
 
 import           Control.Exception
+import           Lens.Micro
 import           Control.Monad       (filterM, void)
-import Control.Monad.Trans (liftIO)
+import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (StateT, evalStateT, runStateT, get, put, modify)
 import           Data.Either
 import           Data.Hashable       (Hashable)
