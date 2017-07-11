@@ -551,7 +551,7 @@ process (currentNode:nextNodes) = do
       X.NodeElement (X.Element "bind" atr kids) ->
          do processBind nextPc atr kids
             return []
-      X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
+      X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
       X.NodeElement (X.Element tn atr kids)      -> processFancy tn atr kids
@@ -648,11 +648,11 @@ processBind (ProcessContext pth m l o unbound plain mko nodes s) atr kids = do
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library.
-processApply :: ProcessContext s ->
-                Map X.Name Text ->
+processApply :: Map X.Name Text ->
                 [X.Node] ->
                 ProcessT s
-processApply pc@(ProcessContext pth m l _ _ _ mko _ _) atr kids = do
+processApply atr kids = do
+  pc@(ProcessContext pth m l _ _ _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- liftP $ runTemplate (mko kids) pth m l
