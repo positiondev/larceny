@@ -554,7 +554,7 @@ process (currentNode:nextNodes) = do
       X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
-      X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
+      X.NodeElement (X.Element tn atr kids)      -> processFancy tn atr kids
       X.NodeContent t                            -> return [t]
       X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
       X.NodeInstruction _                        -> return []
@@ -621,13 +621,13 @@ fillAttr eBlankText =
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: ProcessContext s ->
-                X.Name ->
+processFancy :: X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
                 ProcessT s
-processFancy pc@(ProcessContext pth m l _ _ _ mko _ _) tn atr kids =
-  let tagName = X.nameLocalName tn in do
+processFancy tn atr kids = do
+  pc@(ProcessContext pth m l _ _ _ mko _ _) <- get
+  let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
   sequence [ liftP $ unFill (fillIn tagName m)
                     (M.mapKeys X.nameLocalName filled)
