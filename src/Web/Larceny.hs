@@ -595,8 +595,8 @@ attrsToText pc attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
           let (unboundK, unboundV) =  eUnboundAttrs (k,v)
-          keys <- T.concat <$> mapM (fillAttr pc) unboundK
-          vals <- T.concat <$> mapM (fillAttr pc) unboundV
+          keys <- T.concat <$> mapM fillAttr unboundK
+          vals <- T.concat <$> mapM fillAttr unboundV
           return $ toText (keys, vals)
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
@@ -605,15 +605,17 @@ fillAttrs :: ProcessContext s -> Map X.Name Text -> StateT (ProcessContext s) IO
 fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
-          keys <- T.concat <$> mapM (fillAttr pc) unboundKeys
-          vals <- T.concat <$> mapM (fillAttr pc) unboundValues
+          keys <- T.concat <$> mapM fillAttr unboundKeys
+          vals <- T.concat <$> mapM fillAttr unboundValues
           return (X.Name keys Nothing Nothing, vals)
 
-fillAttr :: ProcessContext s -> Either Text Blank -> StateT (ProcessContext s) IO Text
-fillAttr pc@(ProcessContext _ m l _ _ _ mko _ _) eBlankText = liftP $
-  case eBlankText of
-    Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
-    Left text -> return text
+fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
+fillAttr eBlankText =
+  do (ProcessContext _ m l _ _ _ mko _ _) <- get
+     liftP $
+       case eBlankText of
+         Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
+         Left text -> return text
 
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
