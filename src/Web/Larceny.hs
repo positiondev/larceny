@@ -553,7 +553,7 @@ process (currentNode:nextNodes) = do
             return []
       X.NodeElement (X.Element "apply" atr kids) -> processApply nextPc atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
-                                                 -> processPlain nextPc tn atr kids
+                                                 -> processPlain tn atr kids
       X.NodeElement (X.Element tn atr kids)      -> processFancy nextPc tn atr kids
       X.NodeContent t                            -> return [t]
       X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
@@ -563,12 +563,12 @@ process (currentNode:nextNodes) = do
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: ProcessContext s ->
-                X.Name ->
+processPlain :: X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
                 ProcessT s
-processPlain pc tn atr kids = do
+processPlain tn atr kids = do
+  pc <- get
   atrs <- attrsToText atr
   processed <- process kids
   let tagName = X.nameLocalName tn
