@@ -572,19 +572,19 @@ processPlain pc tn atr kids = do
   atrs <- attrsToText atr
   processed <- process kids
   let tagName = X.nameLocalName tn
-  return $ tagToText pc tagName atrs processed
+  return $ tagToText (_pcOverrides pc) tagName atrs processed
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
   HS.fromList sc <> html5SelfClosingNodes
 
-tagToText :: ProcessContext s
+tagToText :: Overrides
           -> Text
           -> Text
           -> [Text]
           -> [Text]
-tagToText pc tagName atrs processed =
-  if tagName `HS.member` selfClosing (_pcOverrides pc)
+tagToText overrides tagName atrs processed =
+  if tagName `HS.member` selfClosing overrides
   then ["<" <> tagName <> atrs <> "/>"]
   else ["<" <> tagName <> atrs <> ">"]
            ++ processed
