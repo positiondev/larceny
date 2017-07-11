@@ -520,6 +520,33 @@ data ProcessContext s = ProcessContext { _pcPath          :: Path -- ???
                                        , _pcNodes         :: [X.Node]
                                        , _pcState         :: s } -- changes }
 
+pcPath :: Lens' (ProcessContext s) Path
+pcPath = lens _pcPath (\pc p -> pc { _pcPath = p })
+
+pcSubs :: Lens' (ProcessContext s) (Substitutions s)
+pcSubs = lens _pcSubs (\pc s -> pc { _pcSubs = s })
+
+pcLib :: Lens' (ProcessContext s) (Library s)
+pcLib = lens _pcLib (\pc l -> pc { _pcLib = l })
+
+pcOverrides :: Lens' (ProcessContext s) Overrides
+pcOverrides = lens _pcOverrides (\pc o -> pc { _pcOverrides = o })
+
+pcUnbound :: Lens' (ProcessContext s) [Blank]
+pcUnbound = lens _pcUnbound (\pc u -> pc { _pcUnbound = u })
+
+pcAllPlainNodes :: Lens' (ProcessContext s) (HashSet Text)
+pcAllPlainNodes = lens _pcAllPlainNodes (\pc p -> pc { _pcAllPlainNodes = p })
+
+pcMk :: Lens' (ProcessContext s) ([X.Node] -> Template s)
+pcMk = lens _pcMk (\pc f -> pc { _pcMk = f })
+
+pcNodes :: Lens' (ProcessContext s) [X.Node]
+pcNodes  = lens _pcNodes (\pc n -> pc { _pcNodes = n })
+
+pcState :: Lens' (ProcessContext s) s
+pcState = lens _pcState (\pc s -> pc { _pcState = s })
+
 type ProcessT s = StateT (ProcessContext s) IO [Text]
 
 data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
