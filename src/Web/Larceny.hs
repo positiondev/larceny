@@ -569,7 +569,7 @@ processPlain :: ProcessContext s ->
                 [X.Node] ->
                 ProcessT s
 processPlain pc tn atr kids = do
-  atrs <- attrsToText pc atr
+  atrs <- attrsToText atr
   processed <- process kids
   let tagName = X.nameLocalName tn
   return $ tagToText pc tagName atrs processed
@@ -590,8 +590,8 @@ tagToText pc tagName atrs processed =
            ++ processed
            ++ ["</" <> tagName <> ">"]
 
-attrsToText :: ProcessContext s -> Map X.Name Text -> StateT (ProcessContext s) IO Text
-attrsToText pc attrs =
+attrsToText :: Map X.Name Text -> StateT (ProcessContext s) IO Text
+attrsToText attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
           let (unboundK, unboundV) =  eUnboundAttrs (k,v)
