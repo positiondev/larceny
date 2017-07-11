@@ -83,9 +83,9 @@ module Web.Larceny ( Blank(..)
                    , parseWithOverrides) where
 
 import           Control.Exception
-import           Control.Monad       (filterM)
+import           Control.Monad       (filterM, void)
 import Control.Monad.Trans (liftIO)
-import           Control.Monad.State (StateT, evalStateT, runStateT, get, put)
+import           Control.Monad.State (StateT, evalStateT, runStateT, get, put, modify)
 import           Data.Either
 import           Data.Hashable       (Hashable)
 import           Data.HashSet        (HashSet)
@@ -544,11 +544,10 @@ process :: [X.Node] -> ProcessT s
 process [] = return []
 process (currentNode:nextNodes) = do
   pc <- get
-  let nextPc = pc { _pcNodes = nextNodes}
-  put nextPc
+  modify (\pc' -> pc' {_pcNodes = nextNodes })
   processedNode <-
     case currentNode of
-      X.NodeElement (X.Element "bind" atr kids)  -> do processBind atr kids
+      X.NodeElement (X.Element "bind" atr kids)  -> do void $ processBind atr kids
                                                        return []
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
@@ -625,7 +624,7 @@ processFancy :: X.Name ->
                 [X.Node] ->
                 ProcessT s
 processFancy tn atr kids = do
-  pc@(ProcessContext pth m l _ _ _ mko _ _) <- get
+  (ProcessContext pth m l _ _ _ mko _ _) <- get
   let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
   sequence [ liftP $ unFill (fillIn tagName m)
@@ -652,7 +651,7 @@ processApply :: Map X.Name Text ->
                 [X.Node] ->
                 ProcessT s
 processApply atr kids = do
-  pc@(ProcessContext pth m l _ _ _ mko _ _) <- get
+  (ProcessContext pth m l _ _ _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- liftP $ runTemplate (mko kids) pth m l
