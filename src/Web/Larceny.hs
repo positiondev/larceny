@@ -601,8 +601,8 @@ attrsToText pc attrs =
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
-fillAttrs :: ProcessContext s -> Map X.Name Text -> StateT (ProcessContext s) IO (Map X.Name Text)
-fillAttrs pc attrs =  M.fromList <$> mapM fill (M.toList attrs)
+fillAttrs :: Map X.Name Text -> StateT (ProcessContext s) IO (Map X.Name Text)
+fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
           keys <- T.concat <$> mapM fillAttr unboundKeys
@@ -628,7 +628,7 @@ processFancy :: ProcessContext s ->
                 ProcessT s
 processFancy pc@(ProcessContext pth m l _ _ _ mko _ _) tn atr kids =
   let tagName = X.nameLocalName tn in do
-  filled <- fillAttrs pc atr
+  filled <- fillAttrs atr
   sequence [ liftP $ unFill (fillIn tagName m)
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mko kids)) l]
@@ -653,7 +653,7 @@ processApply :: ProcessContext s ->
                 [X.Node] ->
                 ProcessT s
 processApply pc@(ProcessContext pth m l _ _ _ mko _ _) atr kids = do
-  filledAttrs <- fillAttrs pc atr
+  filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- liftP $ runTemplate (mko kids) pth m l
   let contentSub = subs [("apply-content",
