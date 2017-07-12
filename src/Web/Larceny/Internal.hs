@@ -47,17 +47,17 @@ mk o = f
                       let pc = ProcessContext pth m l o unbound allPlainNodes f nodes in
                       do s <- get
                          need pth m unbound <$>
-                           (T.concat <$> liftS (pc s) (process nodes))
+                           (T.concat <$> toUserState (pc s) (process nodes))
 
-liftP :: StateT s IO a -> StateT (ProcessContext s) IO a
-liftP f =
+toProcessState :: StateT s IO a -> StateT (ProcessContext s) IO a
+toProcessState f =
   do pc <- get
-     (blah, s') <- liftIO $ runStateT f (_pcState pc)
+     (result, s') <- liftIO $ runStateT f (_pcState pc)
      pcState .= s'
-     return blah
+     return result
 
-liftS :: ProcessContext s -> StateT (ProcessContext s) IO a -> StateT s IO a
-liftS pc f =
+toUserState :: ProcessContext s -> StateT (ProcessContext s) IO a -> StateT s IO a
+toUserState pc f =
   do s <- get
      liftIO $ evalStateT f (pc { _pcState = s })
 
@@ -195,7 +195,7 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
   do (ProcessContext _ m l _ _ _ mko _ _) <- get
-     liftP $
+     toProcessState $
        case eBlankText of
          Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
          Left text -> return text
@@ -212,7 +212,7 @@ processFancy tn atr kids = do
   (ProcessContext pth m l _ _ _ mko _ _) <- get
   let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
-  sequence [ liftP $ unFill (fillIn tagName m)
+  sequence [ toProcessState $ unFill (fillIn tagName m)
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mko kids)) l]
 
@@ -238,10 +238,10 @@ processApply atr kids = do
   (ProcessContext pth m l _ _ _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
-  contentTpl <- liftP $ runTemplate (mko kids) pth m l
+  contentTpl <- toProcessState $ runTemplate (mko kids) pth m l
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
-  sequence [ liftP $ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+  sequence [ toProcessState $ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
 
 findTemplateFromAttrs :: Path ->
                          Library s ->
