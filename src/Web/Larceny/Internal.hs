@@ -137,7 +137,7 @@ process (currentNode:nextNodes) = do
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
-      X.NodeElement (X.Element tn atr kids)      -> processFancy tn atr kids
+      X.NodeElement (X.Element tn atr kids)      -> processBlank tn atr kids
       X.NodeContent t                            -> return [t]
       X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
       X.NodeInstruction _                        -> return []
@@ -200,15 +200,14 @@ fillAttr eBlankText =
          Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
          Left text -> return text
 
-
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processFancy :: X.Name ->
+processBlank :: X.Name ->
                 Map X.Name Text ->
                 [X.Node] ->
                 ProcessT s
-processFancy tn atr kids = do
+processBlank tn atr kids = do
   (ProcessContext pth m l _ _ _ mko _ _) <- get
   let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
