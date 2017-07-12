@@ -64,47 +64,23 @@ toUserState pc f =
 fillIn :: Text -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
 
-data ProcessContext s = ProcessContext { _pcPath          :: Path -- ???
-                                       , _pcSubs          :: Substitutions s -- changes
-                                       , _pcLib           :: Library s -- stays the same
-                                       , _pcOverrides     :: Overrides -- doesn't matter
-                                       , _pcUnbound       :: [Blank] -- changes
-                                       , _pcAllPlainNodes :: HashSet Text -- doesn't matter
-                                       , _pcMk            :: [X.Node] -> Template s -- ???
+data ProcessContext s = ProcessContext { _pcPath          :: Path
+                                       , _pcSubs          :: Substitutions s
+                                       , _pcLib           :: Library s
+                                       , _pcOverrides     :: Overrides
+                                       , _pcUnbound       :: [Blank]
+                                       , _pcAllPlainNodes :: HashSet Text
+                                       , _pcMk            :: [X.Node] -> Template s
                                        , _pcNodes         :: [X.Node]
-                                       , _pcState         :: s } -- changes }
+                                       , _pcState         :: s }
 
 infix  4 .=
 (.=) :: MonadState s m => ASetter s s a b -> b -> m ()
 l .= b = modify (l .~ b)
 {-# INLINE (.=) #-}
 
-{-
-use :: MonadState s m => Getting a s a -> m a
-use l = gets ((^.) l)
-{-# INLINE use #-}
--}
-
--- pcPath :: Lens' (ProcessContext s) Path
--- pcPath = lens _pcPath (\pc p -> pc { _pcPath = p })
-
 pcSubs :: Lens' (ProcessContext s) (Substitutions s)
 pcSubs = lens _pcSubs (\pc s -> pc { _pcSubs = s })
-
--- pcLib :: Lens' (ProcessContext s) (Library s)
--- pcLib = lens _pcLib (\pc l -> pc { _pcLib = l })
-
--- pcOverrides :: Lens' (ProcessContext s) Overrides
--- pcOverrides = lens _pcOverrides (\pc o -> pc { _pcOverrides = o })
-
--- pcUnbound :: Lens' (ProcessContext s) [Blank]
--- pcUnbound = lens _pcUnbound (\pc u -> pc { _pcUnbound = u })
-
--- pcAllPlainNodes :: Lens' (ProcessContext s) (HashSet Text)
--- pcAllPlainNodes = lens _pcAllPlainNodes (\pc p -> pc { _pcAllPlainNodes = p })
-
--- pcMk :: Lens' (ProcessContext s) ([X.Node] -> Template s)
--- pcMk = lens _pcMk (\pc f -> pc { _pcMk = f })
 
 pcNodes :: Lens' (ProcessContext s) [X.Node]
 pcNodes  = lens _pcNodes (\pc n -> pc { _pcNodes = n })
@@ -220,7 +196,7 @@ processBind :: Map X.Name Text ->
                ProcessT s
 processBind atr kids = do
   (ProcessContext pth m l _ _ _ mko nodes _) <- get
-  let tagName = atr M.! "tag" -- Use the AttrMissing exception
+  let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
   pcSubs .= newSubs `M.union` m
