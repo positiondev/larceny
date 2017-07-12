@@ -300,6 +300,14 @@ spec = hspec $ do
          \</apply>"
            `shouldErrorM` (== MissingBlanks [Blank "foo"] ["blah"])
 
+      it "shouldn't matter if there's no `tag` attribute" $ do
+        "<bind>This won't ever be rendered!!</bind>\
+        \<p>Since the non-existent tag is never referenced \
+        \or rendered, it won't blow up.</p>"
+          `shouldRenderM`
+          "<p>Since the non-existent tag is never referenced \
+          \or rendered, it won't blow up.</p>"
+
     describe "mapSubs" $ do
       it "should map the subs over a list" $ do
         hLarcenyState.lSubs .= subst
