@@ -129,3 +129,11 @@ initializeApp = do
   templates <- loadTemplates "templates" defaultOverrides
   ...
 ```
+
+# Development Tips
+
+Use `stack ghci --ghci-options -isrc --ghci-options -itest larceny:test` to
+start ghci with the ability to reload tests when you change the library code.
+
+CI runs `stack test --pedantic` on branches, which will fail if there are any
+errors. Run `stack test --pedantic` before pushing.
