@@ -75,7 +75,6 @@ module Web.Larceny ( Blank(..)
                    , useAttrs
                    , FromAttribute(..)
                    , AttrError(..)
-                   , MissingBlanks(..)
                    , ApplyError(..)
                    , a
                    , (%)

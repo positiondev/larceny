@@ -13,7 +13,6 @@ module Web.Larceny.Types ( Blank(..)
                          , defaultOverrides
                          , FromAttribute(..)
                          , AttrError(..)
-                         , MissingBlanks(..)
                          , ApplyError(..)) where
 
 import           Control.Exception
@@ -176,15 +175,6 @@ instance FromAttribute Int where
   fromAttribute Nothing = Left AttrMissing
 instance FromAttribute a => FromAttribute (Maybe a) where
   fromAttribute = traverse $ fromAttribute . Just
-
-data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
-instance Show MissingBlanks where
-  show (MissingBlanks blanks pth) =
-    let showBlank (Blank tn) = "\"" <> T.unpack tn <> "\""
-        showBlank FallbackBlank = "fallback" in
-    "Missing fill for blanks " <> concatMap showBlank blanks
-    <> " in template " <> show pth <> "."
-instance Exception MissingBlanks
 
 data ApplyError = ApplyError Path Path deriving (Eq)
 instance Show ApplyError where
