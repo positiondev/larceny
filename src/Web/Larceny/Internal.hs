@@ -59,8 +59,9 @@ toUserState pc f =
   do s <- get
      liftIO $ evalStateT f (pc { _pcState = s })
 
-fillIn :: Text -> Substitutions s -> Fill s
-fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
+fillIn :: Blank -> Substitutions s -> Fill s
+fillIn tn m = fromMaybe (textFill "") (M.lookup tn m)
+
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
@@ -164,7 +165,7 @@ fillAttr eBlankText =
   do (ProcessContext _ m l _ _ _ mko _ _) <- get
      toProcessState $
        case eBlankText of
-         Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
+         Right hole -> unFill (fillIn hole m) mempty ([], mko []) l
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -178,7 +179,7 @@ processBlank tn atr kids = do
   (ProcessContext pth m l _ _ _ mko _ _) <- get
   let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
-  sequence [ toProcessState $ unFill (fillIn tagName m)
+  sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mko kids)) l]
 
@@ -251,7 +252,6 @@ eUnboundAttrs (X.Name n _ _, value) = do
           _ -> [Left w]
   ( concatMap mWord (possibleWords n)
     , concatMap mWord (possibleWords value))
-
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
 {-# ANN module ("HLint: ignore Use first" :: String) #-}
