@@ -7,4 +7,5 @@ extra-deps:
 - html-entities-1.1.2
 - ghc-prof-1.4.0
 - js-jquery-3.1.1
+- logging-3.0.4
 resolver: lts-5.14

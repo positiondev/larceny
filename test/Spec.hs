@@ -9,7 +9,7 @@
 
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception       (Exception, catch, throw, try)
+import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..))
 import           Lens.Micro
 import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
                                           runStateT)
@@ -290,6 +290,7 @@ spec = hspec $ do
          \</apply>" `shouldRenderM` "Fill this in Fill this in"
 
       it "should not let binds escape the apply-content tag" $ do
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "not found!")
         let lib = M.fromList [(["blah"], parse "<apply-content /><foo />")]
         hLarcenyState.lLib .= lib
         "<apply template=\"blah\"> \
@@ -298,7 +299,7 @@ spec = hspec $ do
          \  </bind>                 \
          \  <foo />                 \
          \</apply>"
-           `shouldErrorM` (== MissingBlanks [Blank "foo"] ["blah"])
+           `shouldErrorM` (== ErrorCall "not found!")
 
       it "shouldn't matter if there's no `tag` attribute" $ do
         "<bind>This won't ever be rendered!!</bind>\
@@ -408,6 +409,7 @@ spec = hspec $ do
         \ <option ${selectedB}>Option B</option>" `shouldRenderM`
           "<option >Option A</option><option selected>Option B</option>"
 
+    fallbackTests
     attrTests
 
   describe "statefulness" $ do
@@ -421,6 +423,20 @@ spec = hspec $ do
                     ["default"]
          `shouldReturn` Just "12"
 
+fallbackTests ::SpecWith LarcenyHspecState
+fallbackTests = do
+  describe "templates with missing blanks" $ do
+    it "should render empty text by default" $ do
+      "<p>missing: <missing /></p>" `shouldRenderM` "<p>missing: </p>"
+    it "should work if the missing blank has children" $ do
+      "<p>missing: <missing>some stuff</missing></p>" `shouldRenderM` "<p>missing: </p>"
+  describe "setting custom fallbacks" $ do
+    it "should custom fallbacks" $ do
+      hLarcenyState.lSubs .= fallbackSub (rawTextFill "I'm a fallback.")
+      "<p>missing: <missing /></p>" `shouldRenderM` "<p>missing: I'm a fallback.</p>"
+    it "should allow errors to be thrown, e.g., in dev mode" $ do
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "missing blank!")
+        "<p>missing: <missing /></p>" `shouldErrorM` (== ErrorCall "missing blank!")
 
 attrTests :: SpecWith LarcenyHspecState
 attrTests =

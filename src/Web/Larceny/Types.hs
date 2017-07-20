@@ -1,4 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
 module Web.Larceny.Types ( Blank(..)
@@ -6,6 +5,7 @@ module Web.Larceny.Types ( Blank(..)
                          , Attributes
                          , Substitutions
                          , subs
+                         , fallbackSub
                          , Template(..)
                          , Path
                          , Library
@@ -13,12 +13,11 @@ module Web.Larceny.Types ( Blank(..)
                          , defaultOverrides
                          , FromAttribute(..)
                          , AttrError(..)
-                         , MissingBlanks(..)
                          , ApplyError(..)) where
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
-import           Data.Hashable       (Hashable)
+import           Data.Hashable       (Hashable, hashWithSalt, hash)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
@@ -38,7 +37,11 @@ import           Text.Read           (readMaybe)
 -- \<skater name="${name}">            \<- both "skater" and "name"
 -- \<a href="teams\/${team}\/{$number}"> \<- both "team" and number"
 -- @
-newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
+data Blank = Blank Text | FallbackBlank  deriving (Eq, Show, Ord)
+
+instance Hashable Blank where
+  hashWithSalt s (Blank tn) = s + hash tn
+  hashWithSalt s FallbackBlank = s + hash ("FallbackBlank" :: Text)
 
 -- | A  Fill is how to fill in a Blank.
 --
@@ -83,6 +86,25 @@ type Substitutions s = Map Blank (Fill s)
 -- @
 subs :: [(Text, Fill s)] -> Substitutions s
 subs = M.fromList . map (\(x, y) -> (Blank x, y))
+
+-- | Say how to fill in Blanks with missing Fills.
+--
+-- @
+-- \<nonexistent \/>
+-- fallbackSub (textFill "I'm a fallback.")
+-- @
+-- > I'm a fallback.
+--
+-- You can add the resulting Substitutions to your regular Substitutions using
+-- `mappend` or `(<>)`
+--
+-- @
+-- \<blank \/>, <nonexistent \/>
+-- subs [("blank", textFill "a fill")] <> fallbackSub (textFill "a fallback")
+-- @
+-- > a fill, a fallback
+fallbackSub :: Fill s -> Substitutions s
+fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 
 -- | When you run a Template with the path, some substitutions, and the
 -- template library, you'll get back some stateful text.
@@ -154,17 +176,10 @@ instance FromAttribute Int where
 instance FromAttribute a => FromAttribute (Maybe a) where
   fromAttribute = traverse $ fromAttribute . Just
 
-data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
-instance Show MissingBlanks where
-  show (MissingBlanks blanks pth) =
-    let showBlank (Blank tn) = "\"" <> T.unpack tn <> "\"" in
-    "Missing fill for blanks " <> concatMap showBlank blanks
-    <> " in template " <> show pth <> "."
-instance Exception MissingBlanks
-
 data ApplyError = ApplyError Path Path deriving (Eq)
 instance Show ApplyError where
   show (ApplyError tplPth pth) =
     "Couldn't find " <> show tplPth <> " relative to " <> show pth <> "."
 instance Exception ApplyError
 
+{-# ANN module ("HLint: ignore Use first" :: String) #-}

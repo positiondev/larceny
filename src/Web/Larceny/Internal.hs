@@ -16,7 +16,6 @@ import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Monoid         ((<>))
-import qualified Data.Set            as S
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
@@ -46,8 +45,7 @@ mk o = f
           Template $ \pth m l ->
                       let pc = ProcessContext pth m l o unbound allPlainNodes f nodes in
                       do s <- get
-                         need pth m unbound <$>
-                           (T.concat <$> toUserState (pc s) (process nodes))
+                         T.concat <$> toUserState (pc s) (process nodes)
 
 toProcessState :: StateT s IO a -> StateT (ProcessContext s) IO a
 toProcessState f =
@@ -61,8 +59,16 @@ toUserState pc f =
   do s <- get
      liftIO $ evalStateT f (pc { _pcState = s })
 
-fillIn :: Text -> Substitutions s -> Fill s
-fillIn tn m = fromMaybe (textFill "") (M.lookup (Blank tn) m)
+fillIn :: Blank -> Substitutions s -> Fill s
+fillIn tn m = fromMaybe (fallbackFill tn m) (M.lookup tn m)
+
+fallbackFill :: Blank -> Substitutions s -> Fill s
+fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
+fallbackFill (Blank tn) m =
+  let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
+  Fill $ \attr (pth, tpl) lib ->
+    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+       unFill fallback attr (pth, tpl) lib
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
@@ -89,13 +95,6 @@ pcState :: Lens' (ProcessContext s) s
 pcState = lens _pcState (\pc s -> pc { _pcState = s })
 
 type ProcessT s = StateT (ProcessContext s) IO [Text]
-
-need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
-need pth m keys rest =
-  let d = S.difference (S.fromList keys) (M.keysSet m)
-  in if S.null d
-     then rest
-     else throw $ MissingBlanks (S.toList d) pth
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
@@ -173,7 +172,7 @@ fillAttr eBlankText =
   do (ProcessContext _ m l _ _ _ mko _ _) <- get
      toProcessState $
        case eBlankText of
-         Right (Blank hole) -> unFill (fillIn hole m) mempty ([], mko []) l
+         Right hole -> unFill (fillIn hole m) mempty ([], mko []) l
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -187,7 +186,7 @@ processBlank tn atr kids = do
   (ProcessContext pth m l _ _ _ mko _ _) <- get
   let tagName = X.nameLocalName tn
   filled <- fillAttrs atr
-  sequence [ toProcessState $ unFill (fillIn tagName m)
+  sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
                     (M.mapKeys X.nameLocalName filled)
                     (pth, add m (mko kids)) l]
 
@@ -260,7 +259,6 @@ eUnboundAttrs (X.Name n _ _, value) = do
           _ -> [Left w]
   ( concatMap mWord (possibleWords n)
     , concatMap mWord (possibleWords value))
-
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
 {-# ANN module ("HLint: ignore Use first" :: String) #-}

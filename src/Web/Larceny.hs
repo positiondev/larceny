@@ -60,6 +60,7 @@ module Web.Larceny ( Blank(..)
                    , loadTemplates
                    , getAllTemplates
                    , subs
+                   , fallbackSub
                    , textFill
                    , textFill'
                    , rawTextFill
@@ -74,7 +75,6 @@ module Web.Larceny ( Blank(..)
                    , useAttrs
                    , FromAttribute(..)
                    , AttrError(..)
-                   , MissingBlanks(..)
                    , ApplyError(..)
                    , a
                    , (%)
