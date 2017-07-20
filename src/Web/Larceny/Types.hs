@@ -1,4 +1,3 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE OverloadedStrings          #-}
 
 module Web.Larceny.Types ( Blank(..)
@@ -18,7 +17,7 @@ module Web.Larceny.Types ( Blank(..)
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
-import           Data.Hashable       (Hashable)
+import           Data.Hashable       (Hashable, hashWithSalt, hash)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
@@ -38,7 +37,11 @@ import           Text.Read           (readMaybe)
 -- \<skater name="${name}">            \<- both "skater" and "name"
 -- \<a href="teams\/${team}\/{$number}"> \<- both "team" and number"
 -- @
-newtype Blank = Blank Text deriving (Eq, Show, Ord, Hashable)
+data Blank = Blank Text | FallbackBlank  deriving (Eq, Show, Ord)
+
+instance Hashable Blank where
+  hashWithSalt s (Blank tn) = s + hash tn
+  hashWithSalt s FallbackBlank = s + hash ("FallbackBlank" :: Text)
 
 -- | A  Fill is how to fill in a Blank.
 --
@@ -157,7 +160,8 @@ instance FromAttribute a => FromAttribute (Maybe a) where
 data MissingBlanks = MissingBlanks [Blank] Path deriving (Eq)
 instance Show MissingBlanks where
   show (MissingBlanks blanks pth) =
-    let showBlank (Blank tn) = "\"" <> T.unpack tn <> "\"" in
+    let showBlank (Blank tn) = "\"" <> T.unpack tn <> "\""
+        showBlank FallbackBlank = "fallback" in
     "Missing fill for blanks " <> concatMap showBlank blanks
     <> " in template " <> show pth <> "."
 instance Exception MissingBlanks
@@ -168,3 +172,4 @@ instance Show ApplyError where
     "Couldn't find " <> show tplPth <> " relative to " <> show pth <> "."
 instance Exception ApplyError
 
+{-# ANN module ("HLint: ignore Use first" :: String) #-}
