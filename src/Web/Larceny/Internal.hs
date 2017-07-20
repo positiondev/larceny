@@ -16,7 +16,6 @@ import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Monoid         ((<>))
-import qualified Data.Set            as S
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
@@ -46,8 +45,7 @@ mk o = f
           Template $ \pth m l ->
                       let pc = ProcessContext pth m l o unbound allPlainNodes f nodes in
                       do s <- get
-                         need pth m unbound <$>
-                           (T.concat <$> toUserState (pc s) (process nodes))
+                         T.concat <$> toUserState (pc s) (process nodes)
 
 toProcessState :: StateT s IO a -> StateT (ProcessContext s) IO a
 toProcessState f =
@@ -89,13 +87,6 @@ pcState :: Lens' (ProcessContext s) s
 pcState = lens _pcState (\pc s -> pc { _pcState = s })
 
 type ProcessT s = StateT (ProcessContext s) IO [Text]
-
-need :: Path -> Map Blank (Fill s) -> [Blank] -> Text -> Text
-need pth m keys rest =
-  let d = S.difference (S.fromList keys) (M.keysSet m)
-  in if S.null d
-     then rest
-     else throw $ MissingBlanks (S.toList d) pth
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
