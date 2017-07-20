@@ -5,6 +5,7 @@ module Web.Larceny.Types ( Blank(..)
                          , Attributes
                          , Substitutions
                          , subs
+                         , fallbackSub
                          , Template(..)
                          , Path
                          , Library
@@ -86,6 +87,25 @@ type Substitutions s = Map Blank (Fill s)
 -- @
 subs :: [(Text, Fill s)] -> Substitutions s
 subs = M.fromList . map (\(x, y) -> (Blank x, y))
+
+-- | Say how to fill in Blanks with missing Fills.
+--
+-- @
+-- \<nonexistent \/>
+-- fallbackSub (textFill "I'm a fallback.")
+-- @
+-- > I'm a fallback.
+--
+-- You can add the resulting Substitutions to your regular Substitutions using
+-- `mappend` or `(<>)`
+--
+-- @
+-- \<blank \/>, <nonexistent \/>
+-- subs [("blank", textFill "a fill")] <> fallbackSub (textFill "a fallback")
+-- @
+-- > a fill, a fallback
+fallbackSub :: Fill s -> Substitutions s
+fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 
 -- | When you run a Template with the path, some substitutions, and the
 -- template library, you'll get back some stateful text.

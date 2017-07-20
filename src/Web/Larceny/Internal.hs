@@ -60,8 +60,15 @@ toUserState pc f =
      liftIO $ evalStateT f (pc { _pcState = s })
 
 fillIn :: Blank -> Substitutions s -> Fill s
-fillIn tn m = fromMaybe (textFill "") (M.lookup tn m)
+fillIn tn m = fromMaybe (fallbackFill tn m) (M.lookup tn m)
 
+fallbackFill :: Blank -> Substitutions s -> Fill s
+fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
+fallbackFill (Blank tn) m =
+  let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
+  Fill $ \attr (pth, tpl) lib ->
+    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+       unFill fallback attr (pth, tpl) lib
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
