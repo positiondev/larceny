@@ -375,6 +375,12 @@ spec = hspec $ do
          \</bind> <p class=\"${someAttr}\"></p>"
            `shouldRenderM` "<p class=\"lots of space\"></p>"
 
+      it "should know what the template path is" $ do
+        let fill = Fill $ \_ (p, _) _ -> return (head p)
+        hLarcenyState.lSubs .= subs [("template", fill)]
+        "<p class=\"${template}\"></p>"
+          `shouldRenderM` "<p class=\"default\"></p>"
+
     describe "a large template" $ do
       it "should render large HTML files" $ do
         hLarcenyState.lSubs .= subst
