@@ -383,13 +383,13 @@ spec = hspec $ do
 
     describe "escaping" $ do
       it "should escape html in textFill" $ do
-        hLarcenyState.lSubs .= 
+        hLarcenyState.lSubs .=
          subs [("someHtml", textFill "<strong>Some HTML</strong>")]
         "  <p><someHtml /></p>" `shouldRenderM`
            "<p>&lt;strong&gt;Some HTML&lt;/strong&gt;</p>"
 
       it "should not escape html with rawTextFill" $ do
-        hLarcenyState.lSubs .= 
+        hLarcenyState.lSubs .=
          subs [("someHtml", rawTextFill "<strong>Some HTML</strong>")]
         "<p><someHtml /></p>" `shouldRenderM`
          "<p><strong>Some HTML</strong></p>"
@@ -411,7 +411,10 @@ spec = hspec $ do
 
     fallbackTests
     attrTests
+  statefulTests
 
+statefulTests :: SpecWith ()
+statefulTests =
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
          renderWith (M.fromList [(["default"], parse "<x/><x/>")])
@@ -422,6 +425,25 @@ spec = hspec $ do
                     0
                     ["default"]
          `shouldReturn` Just "12"
+       {- The following test was prompted by a bug where I refuktored the
+          bind tag handling to be inside the case statement in `process`.
+          The bind tag processor itself calls bind but doesn't return any
+          text. This resulted in portions of the template being evaluated
+          over and over again.
+       -}
+      it "should not be affected by binds" $ do
+       let tpl = "<bind tag=\"test1\">test1</bind>\
+                 \<bind tag=\"test2\">test2</bind>\
+                 \<x/><x/>"
+       renderWith (M.fromList [(["default"], parse tpl)])
+                    (subs [("x", Fill $ \_ _ _ ->
+                                   do modify ((+1) :: Int -> Int)
+                                      s <- get
+                                      return (T.pack (show s)))])
+                    0
+                    ["default"]
+         `shouldReturn` Just "12"
+
 
 fallbackTests ::SpecWith LarcenyHspecState
 fallbackTests = do

@@ -6,7 +6,6 @@ module Web.Larceny.Internal ( findTemplate
 
 import           Control.Exception
 import           Lens.Micro
-import           Control.Monad       (void)
 import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
 import           Data.Either
@@ -102,13 +101,14 @@ add mouter tpl =
 
 process :: [X.Node] -> ProcessT s
 process [] = return []
+process (X.NodeElement (X.Element "bind" atr kids):nextNodes) = do
+  pcNodes .= nextNodes
+  processBind atr kids
 process (currentNode:nextNodes) = do
   pc <- get
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
-      X.NodeElement (X.Element "bind" atr kids)  -> do void $ processBind atr kids
-                                                       return []
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
