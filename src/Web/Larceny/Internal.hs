@@ -169,10 +169,10 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
-  do (ProcessContext _ m l _ _ _ mko _ _) <- get
+  do (ProcessContext pth m l _ _ _ mko _ _) <- get
      toProcessState $
        case eBlankText of
-         Right hole -> unFill (fillIn hole m) mempty ([], mko []) l
+         Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
