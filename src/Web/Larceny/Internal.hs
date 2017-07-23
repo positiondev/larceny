@@ -32,7 +32,8 @@ parse = parseWithOverrides defaultOverrides
 -- | Use overrides when parsing a template.
 parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
-  let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
+  let textWithoutDoctype = LT.replace "<!DOCTYPE html>" "<doctype />" t
+      (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
   in mk o nodes
 
 -- | Turn HTML nodes and overrides into templates.
@@ -109,7 +110,7 @@ process (currentNode:nextNodes) = do
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
-      X.NodeElement (X.Element "doctype" mempty [])  -> return ["<!DOCTYPE html>"]
+      X.NodeElement (X.Element "doctype" _ [])  -> return ["<!DOCTYPE html>"]
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids
