@@ -502,6 +502,64 @@ conditionalTests = do
         \  <else>It's false!</else>\
         \</if>"
           `shouldRenderM` "It's false!"
+  describe "exists" $ do
+    describe "the fill exists" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        "<if exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist!</else>\
+        \</if>"
+          `shouldRenderM` "It exists!"
+    describe "the fill doesn't exist" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        "<if exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist!</else>\
+        \</if>"
+          `shouldRenderM` "It doesn't exist!"
+  describe "using condition and exists at the same time" $ do
+    describe "condition is true and tag exists" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        "<if condition=\"True\" exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist!</else>\
+        \</if>"
+          `shouldRenderM` "It exists!"
+    describe "any other combination" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        "<if condition=\"True\" exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist and/or it's false!</else>\
+        \</if>"
+          `shouldRenderM` "It doesn't exist and/or it's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        "<if condition=\"False\" exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist and/or it's false!</else>\
+        \</if>"
+          `shouldRenderM` "It doesn't exist and/or it's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        "<if condition=\"False\" exists=\"${existing}\">\
+        \  <then>It <existing />!</then>\
+        \  <else>It doesn't exist and/or it's false!</else>\
+        \</if>"
+          `shouldRenderM` "It doesn't exist and/or it's false!"
+
 
 fallbackTests ::SpecWith LarcenyHspecState
 fallbackTests = do

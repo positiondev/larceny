@@ -19,6 +19,7 @@ module Web.Larceny.Fills ( textFill
 import           Control.Exception
 import           Control.Monad.State (StateT)
 import qualified Data.Map            as M
+import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified HTMLEntities.Text   as HE
@@ -26,9 +27,14 @@ import qualified HTMLEntities.Text   as HE
 import           Web.Larceny.Types
 
 
--- | A conditional fill. If the \"condition\" attribute (a Bool) is True, then
--- the `then` block will be filled in. If the the attribute is False, then
--- the `else` block will be filled in.
+-- | A conditional fill.
+--
+-- There are two options: `if` can test if the \"condition\" attribute
+-- (a Bool) is True, or it can test if the \"exists\" attribute contains
+-- non-empty Text.
+--
+-- If the conditions provided are true, the `then` block will be filled
+-- in. If the conditions are not true, then the `else` block will be filled in.
 --
 -- @
 -- <if condition=\"True\">
@@ -37,18 +43,27 @@ import           Web.Larceny.Types
 -- </if>
 -- @
 -- > It's true!
+--
+-- @
+-- <if exists=\"some text\">
+--    <then>It exists!</then>
+--    <else>It doesn't exist!</else>
+-- </if>
+-- @
+-- > It exists!
 ifFill :: Fill s
 ifFill =
-  useAttrs (a "condition") ifFill'
-  where ifFill' :: Bool -> Fill s
-        ifFill' bool =
-          let thenElseSubs = subs [("then", thenFill bool)
+  useAttrs (a "condition" % a "exists") ifFill'
+  where ifFill' :: Maybe Bool -> Maybe Text -> Fill s
+        ifFill' mCondition mExisting =
+          let condition = fromMaybe True mCondition
+              existing = fromMaybe "exist" mExisting
+              bool = condition && existing /= ""
+              thenElseSubs = subs [("then", thenFill bool)
                                   ,("else", thenFill (not bool))] in
           fillChildrenWith thenElseSubs
-
-thenFill :: Bool -> Fill s
-thenFill True = fillChildren
-thenFill False = textFill ""
+        thenFill True = fillChildren
+        thenFill False = textFill ""
 
 -- | A plain text fill.
 --
