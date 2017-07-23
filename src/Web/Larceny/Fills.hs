@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Web.Larceny.Fills ( textFill
                          , textFill'
@@ -11,6 +11,7 @@ module Web.Larceny.Fills ( textFill
                          , fillChildrenWith'
                          , maybeFillChildrenWith
                          , maybeFillChildrenWith'
+                         , ifFill
                          , useAttrs
                          , a
                          , (%)) where
@@ -23,6 +24,31 @@ import qualified Data.Text           as T
 import qualified HTMLEntities.Text   as HE
 ------------
 import           Web.Larceny.Types
+
+
+-- | A conditional fill. If the \"condition\" attribute (a Bool) is True, then
+-- the `then` block will be filled in. If the the attribute is False, then
+-- the `else` block will be filled in.
+--
+-- @
+-- <if condition=\"True\">
+--    <then>It's true!</then>
+--    <else>It's false!</else>
+-- </if>
+-- @
+-- > It's true!
+ifFill :: Fill s
+ifFill =
+  useAttrs (a "condition") ifFill'
+  where ifFill' :: Bool -> Fill s
+        ifFill' bool =
+          let thenElseSubs = subs [("then", thenFill bool)
+                                  ,("else", thenFill (not bool))] in
+          fillChildrenWith thenElseSubs
+
+thenFill :: Bool -> Fill s
+thenFill True = fillChildren
+thenFill False = textFill ""
 
 -- | A plain text fill.
 --

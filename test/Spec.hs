@@ -418,6 +418,7 @@ spec = hspec $ do
     fallbackTests
     attrTests
     doctypeTests
+    conditionalTests
   statefulTests
 
 statefulTests :: SpecWith ()
@@ -462,6 +463,45 @@ doctypeTests = do
       "<!DOCTYPE html><html><p>Hello world</p></html>"
       `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
 
+conditionalTests :: SpecWith LarcenyHspecState
+conditionalTests = do
+  describe "conditionals" $ do
+    describe "true condition" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        "<if condition=\"True\">\
+        \  <then>It's true!</then>\
+        \  <else>It's false!</else>\
+        \</if>"
+          `shouldRenderM` "It's true!"
+      it "should work with a blank in the attribute" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("userIsLoggedIn", textFill "True")]
+        "<if condition=\"${userIsLoggedIn}\">\
+        \  <then>It's true!</then>\
+        \  <else>It's false!</else>\
+        \</if>"
+          `shouldRenderM` "It's true!"
+    describe "false condition" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        "<if condition=\"False\">\
+        \  <then>It's true!</then>\
+        \  <else>It's false!</else>\
+        \</if>"
+          `shouldRenderM` "It's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("userIsLoggedIn", textFill "False")]
+        "<if condition=\"${userIsLoggedIn}\">\
+        \  <then>It's true!</then>\
+        \  <else>It's false!</else>\
+        \</if>"
+          `shouldRenderM` "It's false!"
 
 fallbackTests ::SpecWith LarcenyHspecState
 fallbackTests = do
