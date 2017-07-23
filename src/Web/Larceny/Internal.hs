@@ -109,6 +109,7 @@ process (currentNode:nextNodes) = do
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
+      X.NodeElement (X.Element "doctype" mempty [])  -> return ["<!DOCTYPE html>"]
       X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
       X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
                                                  -> processPlain tn atr kids

@@ -450,6 +450,12 @@ statefulTests =
                     ["default"]
          `shouldReturn` Just "12"
 
+doctypeTests :: SpecWith LarcenyHspecState
+doctypeTests = do
+  describe "doctypes" $ do
+    it "should render doctypes" $ do
+      "<doctype />" `shouldRenderM` "<!DOCTYPE html>"
+
 
 fallbackTests ::SpecWith LarcenyHspecState
 fallbackTests = do
