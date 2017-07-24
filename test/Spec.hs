@@ -466,99 +466,74 @@ doctypeTests = do
 conditionalTests :: SpecWith LarcenyHspecState
 conditionalTests = do
   describe "conditionals" $ do
+    let template cond =
+          "<if condition=\"" <> cond <> "\">\
+          \  <then>It's true!</then>\
+          \  <else>It's false!</else>\
+          \</if>"
     describe "true condition" $ do
       it "should display the stuff within the `then` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        "<if condition=\"True\">\
-        \  <then>It's true!</then>\
-        \  <else>It's false!</else>\
-        \</if>"
-          `shouldRenderM` "It's true!"
+        template "True" `shouldRenderM` "It's true!"
       it "should work with a blank in the attribute" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
                 ,("userIsLoggedIn", textFill "True")]
-        "<if condition=\"${userIsLoggedIn}\">\
-        \  <then>It's true!</then>\
-        \  <else>It's false!</else>\
-        \</if>"
-          `shouldRenderM` "It's true!"
+        template "${userIsLoggedIn}" `shouldRenderM` "It's true!"
     describe "false condition" $ do
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        "<if condition=\"False\">\
-        \  <then>It's true!</then>\
-        \  <else>It's false!</else>\
-        \</if>"
-          `shouldRenderM` "It's false!"
+        template "False" `shouldRenderM` "It's false!"
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
                 ,("userIsLoggedIn", textFill "False")]
-        "<if condition=\"${userIsLoggedIn}\">\
-        \  <then>It's true!</then>\
-        \  <else>It's false!</else>\
-        \</if>"
-          `shouldRenderM` "It's false!"
+        template "${userIsLoggedIn}" `shouldRenderM` "It's false!"
   describe "exists" $ do
+    let template =
+          "<if exists=\"${existing}\">\
+          \  <then>It <existing />!</then>\
+          \  <else>It doesn't exist!</else>\
+          \</if>"
     describe "the fill exists" $ do
       it "should display the stuff within the `then` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
                 ,("existing", textFill "exists")]
-        "<if exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist!</else>\
-        \</if>"
-          `shouldRenderM` "It exists!"
+        template `shouldRenderM` "It exists!"
     describe "the fill doesn't exist" $ do
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        "<if exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist!</else>\
-        \</if>"
-          `shouldRenderM` "It doesn't exist!"
+        template `shouldRenderM` "It doesn't exist!"
   describe "using condition and exists at the same time" $ do
+    let template cond =
+          "<if condition=\"" <> cond <> "\" exists=\"${existing}\">\
+          \  <then>It <existing />!</then>\
+          \  <else>It doesn't exist and/or it's false!</else>\
+          \</if>"
     describe "condition is true and tag exists" $ do
       it "should display the stuff within the `then` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
                 ,("existing", textFill "exists")]
-        "<if condition=\"True\" exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist!</else>\
-        \</if>"
-          `shouldRenderM` "It exists!"
+        template "True" `shouldRenderM` "It exists!"
     describe "any other combination" $ do
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        "<if condition=\"True\" exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist and/or it's false!</else>\
-        \</if>"
-          `shouldRenderM` "It doesn't exist and/or it's false!"
+        template"True" `shouldRenderM` "It doesn't exist and/or it's false!"
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
                 ,("existing", textFill "exists")]
-        "<if condition=\"False\" exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist and/or it's false!</else>\
-        \</if>"
-          `shouldRenderM` "It doesn't exist and/or it's false!"
+        template "False" `shouldRenderM` "It doesn't exist and/or it's false!"
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        "<if condition=\"False\" exists=\"${existing}\">\
-        \  <then>It <existing />!</then>\
-        \  <else>It doesn't exist and/or it's false!</else>\
-        \</if>"
-          `shouldRenderM` "It doesn't exist and/or it's false!"
+        template "False" `shouldRenderM` "It doesn't exist and/or it's false!"
 
 
 fallbackTests ::SpecWith LarcenyHspecState
