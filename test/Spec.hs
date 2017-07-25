@@ -318,7 +318,7 @@ spec = hspec $ do
       it "should allow you to write functions for fills" $ do
         let subs' =
               subs [("desc",
-                     Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
+                     Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! (Name Nothing "length")))
                                         "A really long description"
                                         <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -328,7 +328,7 @@ spec = hspec $ do
         let subs' =
               subs [("desc", Fill $
                           \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
-                                         return $ T.take (read $ T.unpack (m M.! "length"))
+                                         return $ T.take (read $ T.unpack (m M.! (Name Nothing "length")))
                                            "A really long description"
                                            <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -418,6 +418,17 @@ spec = hspec $ do
     fallbackTests
     attrTests
   statefulTests
+
+namespaceTests :: SpecWith LarcenyHspecState
+namespaceTests =
+  describe "namespaces" $ do
+    it "should assume that tags with namespaces are blanks" $ do
+      "<address><l:address /></address>"
+        `shouldRenderM` "<address></address>"
+      hLarcenyState.lSubs .=
+        subs [("address", textFill "5 Jones St")]
+      "<address><l:address /></address>"
+        `shouldRenderM` "<address>5 Jones St</address>"
 
 statefulTests :: SpecWith ()
 statefulTests =

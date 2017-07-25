@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Web.Larceny.Fills ( textFill
                          , textFill'
@@ -181,7 +181,7 @@ useAttrs k fill= Fill $ \atrs (pth, tpl) lib ->
 -- is rendered.
 a :: (FromAttribute a) => Text -> Attributes -> (a -> b) -> b
 a attrName attrs k =
-  let mAttr = M.lookup attrName attrs in
+  let mAttr = M.lookup (Name Nothing attrName) attrs in
   k (either (\e -> throw $ e attrName) id (fromAttribute mAttr))
 
 -- | Use with `a` to use multiple attributes in the fill.
