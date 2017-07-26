@@ -9,7 +9,6 @@ import           Lens.Micro
 import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
 import qualified Data.HashSet        as HS
-import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Monoid         ((<>))
@@ -22,6 +21,7 @@ import qualified Text.XML            as X
 import           Web.Larceny.Types
 import           Web.Larceny.Fills
 import           Web.Larceny.Html    (html5Nodes, html5SelfClosingNodes)
+import           Web.Larceny.Svg     (svgNodes)
 
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
@@ -37,23 +37,24 @@ data Node = NodeElement Element
           | NodeContent Text
           | NodeComment Text
 
-data Element = PlainElement Text Attributes [Node]
+data Element = PlainElement Name Attributes [Node]
              | ApplyElement Attributes [Node]
              | BindElement Attributes [Node]
              | BlankElement Name Attributes [Node]
 
 toLarcenyName :: X.Name -> Name
 toLarcenyName (X.Name tn _ _) =
-  case T.splitOn ":" tn of
-    (ns:name:_) -> Name (Just ns) name
-    (name: _ )  -> Name Nothing name
-    []          -> Name Nothing ""
+  case T.stripPrefix "l:" tn of
+    Just larcenyTagName -> Name (Just "l") larcenyTagName
+    Nothing -> case T.stripPrefix "svg:" tn of
+                 Just svgTagName -> Name (Just "svg") svgTagName
+                 Nothing -> Name Nothing tn
 
 toLarcenyNode :: Overrides -> X.Node -> Node
 toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
   let larcenyNodes = map (toLarcenyNode o) nodes
       attrs = M.mapKeys X.nameLocalName atr
-      allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
+      allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes `HS.union` svgNodes)
                              `HS.difference` HS.fromList (overrideNodes o)in
   case toLarcenyName tn of
 
@@ -66,13 +67,16 @@ toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
       NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
 
     -- these are the blank and plain elements
-    -- if there's a namespace, it's definitely a Blank
+    -- if it's in the "svg" namespace, it's a plain node
+    -- otherwise, if there's a namespace, it's definitely a Blank
     -- if there's not a namespace, and the tag is a member of the set of plain nodes, it's not a Blank
-    -- otherwise, it's a blank
+    -- otherwise, it's a blan
+    Name (Just "svg") name ->
+      NodeElement (PlainElement (Name (Just "svg") name) attrs larcenyNodes)
     Name (Just ns) name ->
       NodeElement (BlankElement (Name (Just ns) name) attrs larcenyNodes)
-    Name Nothing name | HS.member name allPlainNodes ->
-      NodeElement (PlainElement name attrs larcenyNodes)
+    Name ns name | HS.member name allPlainNodes ->
+      NodeElement (PlainElement (Name ns name) attrs larcenyNodes)
     Name Nothing name ->
       NodeElement (BlankElement (Name Nothing name) attrs larcenyNodes)
 toLarcenyNode _ (X.NodeContent c)  = NodeContent c
@@ -167,7 +171,7 @@ process (currentNode:nextNodes) = do
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: Text ->
+processPlain :: Name ->
                 Attributes ->
                 [Node] ->
                 ProcessT s
@@ -182,16 +186,17 @@ selfClosing (Overrides _ _ sc) =
   HS.fromList sc <> html5SelfClosingNodes
 
 tagToText :: Overrides
-          -> Text
+          -> Name
           -> Text
           -> [Text]
           -> [Text]
-tagToText overrides tagName atrs processed =
-  if tagName `HS.member` selfClosing overrides
-  then ["<" <> tagName <> atrs <> "/>"]
-  else ["<" <> tagName <> atrs <> ">"]
+tagToText overrides (Name mNs name) atrs processed =
+  let prefix = fromMaybe "" ((\ns -> ns <> ":") <$> mNs) in
+  if name `HS.member` selfClosing overrides
+  then ["<" <> prefix <> name <> atrs <> "/>"]
+  else ["<" <> prefix <> name <> atrs <> ">"]
            ++ processed
-           ++ ["</" <> tagName <> ">"]
+           ++ ["</" <> prefix <> name <> ">"]
 
 attrsToText :: Attributes -> StateT (ProcessContext s) IO Text
 attrsToText attrs =
