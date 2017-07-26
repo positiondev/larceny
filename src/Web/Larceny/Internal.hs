@@ -8,8 +8,6 @@ import           Control.Exception
 import           Lens.Micro
 import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
-import           Data.Either
-import           Data.HashSet        (HashSet)
 import qualified Data.HashSet        as HS
 import           Data.Map            (Map)
 import qualified Data.Map            as M
@@ -41,7 +39,6 @@ data Node = NodeElement Element
 
 data Element = PlainElement Text Attributes [Node]
              | ApplyElement Attributes [Node]
-             | ContentElement
              | BindElement Attributes [Node]
              | BlankElement Name Attributes [Node]
 
@@ -148,7 +145,6 @@ process (NodeElement (BindElement atr kids):nextNodes) = do
   pcNodes .= nextNodes
   processBind atr kids
 process (currentNode:nextNodes) = do
-  pc <- get
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
@@ -164,6 +160,8 @@ process (currentNode:nextNodes) = do
           return [t]
       NodeComment c ->
           return ["<!--" <> c <> "-->"]
+      _ ->
+          return []
   restOfNodes <- process nextNodes
   return $ processedNode ++ restOfNodes
 
@@ -280,10 +278,6 @@ findTemplate lib pth' targetPath =
   case M.lookup (pth' ++ targetPath) lib of
     Just tpl -> (pth' ++ targetPath, Just tpl)
     Nothing  -> findTemplate lib (init pth') targetPath
-
-findUnboundAttrs :: Map Name Text -> [Blank]
-findUnboundAttrs atrs =
-  rights $ concatMap (uncurry (<>) . eUnboundAttrs) (M.toList atrs)
 
 eUnboundAttrs :: (Name, Text) -> ([Either Text Blank], [Either Text Blank])
 eUnboundAttrs (Name _ n, value) = do
