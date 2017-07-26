@@ -1,5 +1,9 @@
 # Changelog
 
+## 2017-7-26
+ * Support SVG tags -- this breaks any substitutions using the same name as an SVG tag
+ * Add larceny ("l") namespace for ambiguous tags
+
 ## 2017-7-21
  * Fix bug in template processing.
 
@@ -8,7 +12,7 @@
  * Add `fallbackSub` so users can specify behavior when a Fill is missing.
  * Remove `MissingBlanks` exception.
 
-## Changlelog bankruptcy
+## Changelog bankruptcy
 
 ## 2/8/2017
 
