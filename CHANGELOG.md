@@ -1,8 +1,9 @@
 # Changelog
 
 ## 2017-7-26
- * Support SVG tags -- this breaks any substitutions using the same name as an SVG tag
+ * Add support for SVG tags -- this BREAKS any substitutions using the same name as an SVG tag
  * Add larceny ("l") namespace for ambiguous tags
+ * Add start of a conversion script to help find SVG-shadowed substitutions. It doesn't actually work as-is -- you need to make some internal Larceny modules accessible and change the template directory inside the script. Not sure how/if to address this for now, because there are only a couple of people who are ever going to use this script.
 
 ## 2017-7-21
  * Fix bug in template processing.
