@@ -417,6 +417,7 @@ spec = hspec $ do
 
     fallbackTests
     attrTests
+    namespaceTests
   statefulTests
 
 namespaceTests :: SpecWith LarcenyHspecState

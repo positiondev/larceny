@@ -33,19 +33,17 @@ parse = parseWithOverrides defaultOverrides
 parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
   let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
-  in mk o $! map toLarcenyNode nodes
-
-toLarcenyNode :: X.Node -> Node
-toLarcenyNode (X.NodeElement (X.Element tn atr nodes)) =
-  NodeElement (Element (toLarcenyName tn) (toAttrs atr) (map toLarcenyNode nodes))
-  where toAttrs = M.mapKeys toLarcenyName
-toLarcenyNode (X.NodeContent c)  = NodeContent c
-toLarcenyNode (X.NodeComment c) = NodeComment c
-toLarcenyNode (X.NodeInstruction _) = NodeContent ""
+  in mk o $! map (toLarcenyNode o) nodes
 
 data Node = NodeElement Element
           | NodeContent Text
           | NodeComment Text
+
+data Element = PlainElement Text Attributes [Node]
+             | ApplyElement Attributes [Node]
+             | ContentElement
+             | BindElement Attributes [Node]
+             | BlankElement Name Attributes [Node]
 
 toLarcenyName :: X.Name -> Name
 toLarcenyName (X.Name tn _ _) =
@@ -54,16 +52,42 @@ toLarcenyName (X.Name tn _ _) =
     (name: _ )  -> Name Nothing name
     []          -> Name Nothing ""
 
-data Element = Element Name Attributes [Node]
+toLarcenyNode :: Overrides -> X.Node -> Node
+toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
+  let larcenyNodes = map (toLarcenyNode o) nodes
+      attrs = M.mapKeys toLarcenyName atr
+      allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
+                             `HS.difference` HS.fromList (overrideNodes o)in
+  case toLarcenyName tn of
+
+    -- these are our special larceny elements
+    Name Nothing "bind" ->
+      NodeElement (BindElement attrs larcenyNodes)
+    Name Nothing "apply" ->
+      NodeElement (ApplyElement attrs larcenyNodes)
+    Name Nothing "apply-content" ->
+      NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
+
+    -- these are the blank and plain elements
+    -- if there's a namespace, it's definitely a Blank
+    -- if there's not a namespace, and the tag is a member of the set of plain nodes, it's not a Blank
+    -- otherwise, it's a blank
+    Name (Just ns) name ->
+      NodeElement (BlankElement (Name (Just ns) name) attrs larcenyNodes)
+    Name Nothing name | HS.member name allPlainNodes ->
+      NodeElement (PlainElement name attrs larcenyNodes)
+    Name Nothing name ->
+      NodeElement (BlankElement (Name Nothing name) attrs larcenyNodes)
+toLarcenyNode _ (X.NodeContent c)  = NodeContent c
+toLarcenyNode _ (X.NodeComment c) = NodeComment c
+toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 
 -- | Turn HTML nodes and overrides into templates.
 mk :: Overrides -> [Node] -> Template s
 mk o = f
-  where allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
-                        `HS.difference` HS.fromList (overrideNodes o)
-        f nodes = let unbound = findUnbound allPlainNodes nodes in
+  where f nodes =
           Template $ \pth m l ->
-                      let pc = ProcessContext pth m l o unbound allPlainNodes f nodes in
+                      let pc = ProcessContext pth m l o f nodes in
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
@@ -94,8 +118,6 @@ data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
                                        , _pcLib           :: Library s
                                        , _pcOverrides     :: Overrides
-                                       , _pcUnbound       :: [Blank]
-                                       , _pcAllPlainNodes :: HashSet Text
                                        , _pcMk            :: [Node] -> Template s
                                        , _pcNodes         :: [Node]
                                        , _pcState         :: s }
@@ -122,7 +144,7 @@ add mouter tpl =
 
 process :: [Node] -> ProcessT s
 process [] = return []
-process (NodeElement (Element (Name Nothing "bind") atr kids):nextNodes) = do
+process (NodeElement (BindElement atr kids):nextNodes) = do
   pcNodes .= nextNodes
   processBind atr kids
 process (currentNode:nextNodes) = do
@@ -130,30 +152,31 @@ process (currentNode:nextNodes) = do
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
-      NodeElement (Element (Name Nothing "apply") atr kids) ->
+      NodeElement (ApplyElement atr kids) ->
           processApply atr kids
-      NodeElement (Element tn@(Name Nothing name) atr kids) | HS.member name (_pcAllPlainNodes pc) ->
+      NodeElement (PlainElement tn atr kids) ->
           processPlain tn atr kids
-      NodeElement (Element (Name Nothing name) atr kids) ->
+      NodeElement (BlankElement (Name Nothing name) atr kids) ->
           processBlank name atr kids
-      NodeElement (Element (Name (Just _) name) atr kids) ->
+      NodeElement (BlankElement (Name (Just _) name) atr kids) ->
           processBlank name atr kids
-      NodeContent t                            -> return [t]
-      NodeComment c                            -> return ["<!--" <> c <> "-->"]
+      NodeContent t ->
+          return [t]
+      NodeComment c ->
+          return ["<!--" <> c <> "-->"]
   restOfNodes <- process nextNodes
   return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: Name ->
+processPlain :: Text ->
                 Map Name Text ->
                 [Node] ->
                 ProcessT s
-processPlain tn atr kids = do
+processPlain tagName atr kids = do
   pc <- get
   atrs <- attrsToText atr
   processed <- process kids
-  let tagName = nName tn
   return $ tagToText (_pcOverrides pc) tagName atrs processed
 
 selfClosing :: Overrides -> HS.HashSet Text
@@ -193,7 +216,7 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
-  do (ProcessContext pth m l _ _ _ mko _ _) <- get
+  do (ProcessContext pth m l _ mko _ _) <- get
      toProcessState $
        case eBlankText of
          Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
@@ -207,7 +230,7 @@ processBlank :: Text ->
                 [Node] ->
                 ProcessT s
 processBlank tagName atr kids = do
-  (ProcessContext pth m l _ _ _ mko _ _) <- get
+  (ProcessContext pth m l _ mko _ _) <- get
   filled <- fillAttrs atr
   sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
                     filled
@@ -217,7 +240,7 @@ processBind :: Map Name Text ->
                [Node] ->
                ProcessT s
 processBind atr kids = do
-  (ProcessContext pth m l _ _ _ mko nodes _) <- get
+  (ProcessContext pth m l _ mko nodes _) <- get
   let tagName = atr M.! (Name Nothing "tag")
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
@@ -232,7 +255,7 @@ processApply :: Map Name Text ->
                 [Node] ->
                 ProcessT s
 processApply atr kids = do
-  (ProcessContext pth m l _ _ _ mko _ _) <- get
+  (ProcessContext pth m l _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- toProcessState $ runTemplate (mko kids) pth m l
@@ -257,15 +280,6 @@ findTemplate lib pth' targetPath =
   case M.lookup (pth' ++ targetPath) lib of
     Just tpl -> (pth' ++ targetPath, Just tpl)
     Nothing  -> findTemplate lib (init pth') targetPath
-
-findUnbound :: HashSet Text -> [Node] -> [Blank]
-findUnbound _ [] = []
-findUnbound plainNodes (NodeElement (Element name atr kids):ns) =
-     let (Name _ tn) = name in
-     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
-     then findUnboundAttrs atr ++ findUnbound plainNodes kids
-     else Blank tn : findUnboundAttrs atr ++ findUnbound plainNodes ns
-findUnbound plainNodes (_:ns) = findUnbound plainNodes ns
 
 findUnboundAttrs :: Map Name Text -> [Blank]
 findUnboundAttrs atrs =
