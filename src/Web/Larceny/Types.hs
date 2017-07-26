@@ -74,7 +74,7 @@ newtype Fill s = Fill { unFill :: Attributes
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
-type Attributes = Map Name Text
+type Attributes = Map Text Text
 
 data Name = Name { nNamespace :: Maybe Text
                  , nName      :: Text } deriving (Eq, Ord, Show)

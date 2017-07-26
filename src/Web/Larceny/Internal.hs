@@ -52,7 +52,7 @@ toLarcenyName (X.Name tn _ _) =
 toLarcenyNode :: Overrides -> X.Node -> Node
 toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
   let larcenyNodes = map (toLarcenyNode o) nodes
-      attrs = M.mapKeys toLarcenyName atr
+      attrs = M.mapKeys X.nameLocalName atr
       allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
                              `HS.difference` HS.fromList (overrideNodes o)in
   case toLarcenyName tn of
@@ -168,7 +168,7 @@ process (currentNode:nextNodes) = do
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
 processPlain :: Text ->
-                Map Name Text ->
+                Attributes ->
                 [Node] ->
                 ProcessT s
 processPlain tagName atr kids = do
@@ -193,7 +193,7 @@ tagToText overrides tagName atrs processed =
            ++ processed
            ++ ["</" <> tagName <> ">"]
 
-attrsToText :: Map Name Text -> StateT (ProcessContext s) IO Text
+attrsToText :: Attributes -> StateT (ProcessContext s) IO Text
 attrsToText attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
@@ -204,13 +204,13 @@ attrsToText attrs =
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
-fillAttrs :: Map Name Text -> StateT (ProcessContext s) IO (Map Name Text)
+fillAttrs :: Attributes -> StateT (ProcessContext s) IO Attributes
 fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
           keys <- T.concat <$> mapM fillAttr unboundKeys
           vals <- T.concat <$> mapM fillAttr unboundValues
-          return (Name Nothing keys, vals)
+          return (keys, vals)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
@@ -224,7 +224,7 @@ fillAttr eBlankText =
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
 processBlank :: Text ->
-                Map Name Text ->
+                Attributes ->
                 [Node] ->
                 ProcessT s
 processBlank tagName atr kids = do
@@ -234,12 +234,12 @@ processBlank tagName atr kids = do
                     filled
                     (pth, add m (mko kids)) l]
 
-processBind :: Map Name Text ->
+processBind :: Attributes ->
                [Node] ->
                ProcessT s
 processBind atr kids = do
   (ProcessContext pth m l _ mko nodes _) <- get
-  let tagName = atr M.! (Name Nothing "tag")
+  let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
   pcSubs .= newSubs `M.union` m
@@ -249,7 +249,7 @@ processBind atr kids = do
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library.
-processApply :: Map Name Text ->
+processApply :: Attributes ->
                 [Node] ->
                 ProcessT s
 processApply atr kids = do
@@ -263,11 +263,11 @@ processApply atr kids = do
 
 findTemplateFromAttrs :: Path ->
                          Library s ->
-                         Map Name Text ->
+                         Attributes ->
                          (Path, Template s)
 findTemplateFromAttrs pth l atr =
   let tplPath = T.splitOn "/" $ fromMaybe (throw $ AttrMissing "template")
-                                          (M.lookup (Name Nothing "template") atr) in
+                                          (M.lookup "template" atr) in
   case findTemplate l (init pth) tplPath of
     (_, Nothing) -> throw $ ApplyError tplPath pth
     (targetPath, Just tpl) -> (targetPath, tpl)
@@ -279,8 +279,8 @@ findTemplate lib pth' targetPath =
     Just tpl -> (pth' ++ targetPath, Just tpl)
     Nothing  -> findTemplate lib (init pth') targetPath
 
-eUnboundAttrs :: (Name, Text) -> ([Either Text Blank], [Either Text Blank])
-eUnboundAttrs (Name _ n, value) = do
+eUnboundAttrs :: (Text, Text) -> ([Either Text Blank], [Either Text Blank])
+eUnboundAttrs (name, value) = do
   let possibleWords = T.splitOn "${"
   let mWord w =
         case T.splitOn "}" w of
@@ -288,7 +288,7 @@ eUnboundAttrs (Name _ n, value) = do
           ["",_] -> [Left ("${" <> w)]
           (word: rest) -> Right (Blank word) : map Left rest
           _ -> [Left w]
-  ( concatMap mWord (possibleWords n)
+  ( concatMap mWord (possibleWords name)
     , concatMap mWord (possibleWords value))
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}
