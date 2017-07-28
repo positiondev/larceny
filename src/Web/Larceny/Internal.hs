@@ -67,17 +67,17 @@ toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
       NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
 
     -- these are the blank and plain elements
-    -- if it's in the "svg" namespace, it's a plain node
-    -- otherwise, if there's a namespace, it's definitely a Blank
-    -- if there's not a namespace, and the tag is a member of the set of plain nodes, it's not a Blank
-    -- otherwise, it's a blan
+    -- if it's in the "svg" namespace, it's definitely a plain node
+    -- if there's an "l" namespace, it's definitely a Blank
+    -- if there's not a namespace, and the tag is a member of the set of plain nodes, it's plain
+    -- otherwise, it's a Blank
     Name (Just "svg") name ->
       NodeElement (PlainElement (Name (Just "svg") name) attrs larcenyNodes)
-    Name (Just ns) name ->
-      NodeElement (BlankElement (Name (Just ns) name) attrs larcenyNodes)
+    Name (Just "l") name ->
+      NodeElement (BlankElement (Name (Just "l") name) attrs larcenyNodes)
     Name ns name | HS.member name allPlainNodes ->
       NodeElement (PlainElement (Name ns name) attrs larcenyNodes)
-    Name Nothing name ->
+    Name _ name ->
       NodeElement (BlankElement (Name Nothing name) attrs larcenyNodes)
 toLarcenyNode _ (X.NodeContent c)  = NodeContent c
 toLarcenyNode _ (X.NodeComment c) = NodeComment c
@@ -156,9 +156,7 @@ process (currentNode:nextNodes) = do
           processApply atr kids
       NodeElement (PlainElement tn atr kids) ->
           processPlain tn atr kids
-      NodeElement (BlankElement (Name Nothing name) atr kids) ->
-          processBlank name atr kids
-      NodeElement (BlankElement (Name (Just _) name) atr kids) ->
+      NodeElement (BlankElement (Name _ name) atr kids) ->
           processBlank name atr kids
       NodeContent t ->
           return [t]
