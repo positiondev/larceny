@@ -33,6 +33,11 @@ parseWithOverrides o t =
   let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
   in mk o $! map (toLarcenyNode o) nodes
 
+-- | Phases of the template parsing/rendering process: 1. Parse the document
+--     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
+--     which encodes more information about the elements, including prefix and
+--     whether the node is a regular HTML node, a special Larceny element, or a
+--     Larceny blank. 3. Render each node into Text according to its node type.
 data Node = NodeElement Element
           | NodeContent Text
           | NodeComment Text
@@ -67,16 +72,16 @@ toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
       NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
 
     -- these are the blank and plain elements
-    -- if it's in the "svg" namespace, it's definitely a plain node
-    -- if there's an "l" namespace, it's definitely a Blank
-    -- if there's not a namespace, and the tag is a member of the set of plain nodes, it's plain
+    -- if it's in the "svg" prefix, it's definitely a plain node
+    -- if there's an "l" prefix, it's definitely a Blank
+    -- if there's not a prefix, and the tag is a member of the set of plain nodes, it's plain
     -- otherwise, it's a Blank
     Name (Just "svg") name ->
       NodeElement (PlainElement (Name (Just "svg") name) attrs larcenyNodes)
     Name (Just "l") name ->
       NodeElement (BlankElement (Name (Just "l") name) attrs larcenyNodes)
-    Name ns name | HS.member name allPlainNodes ->
-      NodeElement (PlainElement (Name ns name) attrs larcenyNodes)
+    Name pf name | HS.member name allPlainNodes ->
+      NodeElement (PlainElement (Name pf name) attrs larcenyNodes)
     Name _ name ->
       NodeElement (BlankElement (Name Nothing name) attrs larcenyNodes)
 toLarcenyNode _ (X.NodeContent c)  = NodeContent c
@@ -188,8 +193,8 @@ tagToText :: Overrides
           -> Text
           -> [Text]
           -> [Text]
-tagToText overrides (Name mNs name) atrs processed =
-  let prefix = fromMaybe "" ((\ns -> ns <> ":") <$> mNs) in
+tagToText overrides (Name mPf name) atrs processed =
+  let prefix = fromMaybe "" ((\pf -> pf <> ":") <$> mPf) in
   if name `HS.member` selfClosing overrides
   then ["<" <> prefix <> name <> atrs <> "/>"]
   else ["<" <> prefix <> name <> atrs <> ">"]
