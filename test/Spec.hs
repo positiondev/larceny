@@ -322,7 +322,7 @@ spec = hspec $ do
                                         "A really long description"
                                         <> "...")]
         hLarcenyState.lSubs .= subs'
-        "<desc length=\"10\" />" `shouldRenderM` "A really l..."
+        "<l:desc length=\"10\" />" `shouldRenderM` "A really l..."
 
       it "should allow you to use IO in fills" $ do
         let subs' =
@@ -332,7 +332,7 @@ spec = hspec $ do
                                            "A really long description"
                                            <> "...")]
         hLarcenyState.lSubs .= subs'
-        "<desc length=\"10\" />" `shouldRenderM` "A really l..."
+        "<l:desc length=\"10\" />" `shouldRenderM` "A really l..."
 
     describe "attributes" $ do
       it "should apply substitutions to attributes as well" $ do
@@ -417,7 +417,27 @@ spec = hspec $ do
 
     fallbackTests
     attrTests
+    namespaceTests
   statefulTests
+
+namespaceTests :: SpecWith LarcenyHspecState
+namespaceTests =
+  describe "namespaces" $ do
+    it "should assume that tags with namespaces are blanks" $ do
+      "<address><l:address /></address>"
+        `shouldRenderM` "<address></address>"
+      hLarcenyState.lSubs .=
+        subs [("address", textFill "5 Jones St")]
+      "<address><l:address /></address>"
+        `shouldRenderM` "<address>5 Jones St</address>"
+    it "doesn't parse namespaces in attributes" $ do
+      hLarcenyState.lSubs .=
+        subs [("l:class", textFill "some-class")]
+      "<p class=\"${l:class}\">Hello</p>"
+        `shouldRenderM` "<p class=\"some-class\">Hello</p>"
+    it "should not parse all namespaces as blanks" $ do
+      "<svg:svg><path></path></svg>"
+        `shouldRenderM` "<svg:svg><path></path></svg:svg>"
 
 statefulTests :: SpecWith ()
 statefulTests =
@@ -475,13 +495,13 @@ attrTests =
                          (\n -> textFill $ T.take n
                                 "A really long description"
                                 <> "..."))]
-        "<desc length=\"10\" />" `shouldRenderM` "A really l..."
+        "<l:desc length=\"10\" />" `shouldRenderM` "A really l..."
 
       it "should allow you use multiple args" $ do
          let subs' = subs [("desc", useAttrs (a"length" % a"text")
                                     (\n d -> textFill $ T.take n d <> "..."))]
          hLarcenyState.lSubs .= subs'
-         "<desc length=\"10\" text=\"A really long description\" />"
+         "<l:desc length=\"10\" text=\"A really long description\" />"
            `shouldRenderM` "A really l..."
 
       it "should allow you use child elements" $ do
@@ -492,17 +512,17 @@ attrTests =
                            return $ T.take n t' <> "...")
         hLarcenyState.lSubs .= subs [ ("adverb", textFill "really")
                                     , ("desc", descTplFill)]
-        "<desc length=\"10\">A <adverb /> long description</desc>"
+        "<l:desc length=\"10\">A <adverb /> long description</desc>"
            `shouldRenderM` "A really l..."
 
       it "should allow optional attributes by giving a Maybe type (not using the optional)" $ do
         hLarcenyState.lSubs .= subs [("desc", descFill)]
-        "<desc length=\"10\">A really long description</desc>"
+        "<l:desc length=\"10\">A really long description</desc>"
           `shouldRenderM` "A really l..."
 
       it "should allow optional attributes by giving a Maybe type (using optional)" $ do
         hLarcenyState.lSubs .= subs [("desc", descFill)]
-        "<desc length=\"10\" ending=\" and such \">A really long description</desc>"
+        "<l:desc length=\"10\" ending=\" and such \">A really long description</desc>"
           `shouldRenderM` "A really l and such"
 
       it "should give a nice error message if attribute is missing" $ do
@@ -511,7 +531,7 @@ attrTests =
                   (\n -> textFill $ T.take n
                          "A really long description"
                          <> "..."))]
-        "<desc />" `shouldErrorM` (== AttrMissing "length")
+        "<l:desc />" `shouldErrorM` (== AttrMissing "length")
 
       it "should give a nice error message if attribute is unparsable" $ do
         hLarcenyState.lSubs .=
@@ -519,7 +539,7 @@ attrTests =
                                  (\n -> textFill $ T.take n
                                         "A really long description"
                                         <> "..."))]
-        "<desc length=\"infinite\" />" `shouldErrorM` (== AttrUnparsable "Int" "length")
+        "<l:desc length=\"infinite\" />" `shouldErrorM` (== AttrUnparsable "Int" "length")
   where descFill :: Fill ()
         descFill =
           useAttrs (a"length" % a"ending") descFunc

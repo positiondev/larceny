@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                larceny
-version:             0.2.0.1
+version:             0.3.0.1
 -- synopsis:
 -- description:
 homepage:            http://www.github.com/positiondev/larceny
@@ -19,6 +19,7 @@ cabal-version:       >=1.10
 library
   exposed-modules:     Web.Larceny
                      , Web.Larceny.Html
+                     , Web.Larceny.Svg
                      , Web.Larceny.Internal
                      , Web.Larceny.Types
                      , Web.Larceny.Fills
