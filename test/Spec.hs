@@ -417,6 +417,7 @@ spec = hspec $ do
 
     fallbackTests
     attrTests
+    doctypeTests
     namespaceTests
   statefulTests
 
@@ -469,6 +470,17 @@ statefulTests =
                     0
                     ["default"]
          `shouldReturn` Just "12"
+
+doctypeTests :: SpecWith LarcenyHspecState
+doctypeTests = do
+  describe "doctypes" $ do
+    it "should render blank doctypes" $ do
+      "<doctype />" `shouldRenderM` "<!DOCTYPE html>"
+    it "should render regular doctype" $ do
+      "<!DOCTYPE html>" `shouldRenderM` "<!DOCTYPE html>"
+    it "should render doctype in the correct place" $ do
+      "<!DOCTYPE html><html><p>Hello world</p></html>"
+      `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
 
 
 fallbackTests ::SpecWith LarcenyHspecState

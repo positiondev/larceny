@@ -30,7 +30,8 @@ parse = parseWithOverrides defaultOverrides
 -- | Use overrides when parsing a template.
 parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
-  let (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> t <> "</div>")
+  let textWithoutDoctype = LT.replace "<!DOCTYPE html>" "<doctype />" t
+      (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
   in mk o $! map (toLarcenyNode o) nodes
 
 -- | Phases of the template parsing/rendering process: 1. Parse the document
@@ -46,6 +47,7 @@ data Element = PlainElement Name Attributes [Node]
              | ApplyElement Attributes [Node]
              | BindElement Attributes [Node]
              | BlankElement Name Attributes [Node]
+             | DoctypeElement
 
 toLarcenyName :: X.Name -> Name
 toLarcenyName (X.Name tn _ _) =
@@ -70,6 +72,8 @@ toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
       NodeElement (ApplyElement attrs larcenyNodes)
     Name Nothing "apply-content" ->
       NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
+    Name Nothing "doctype" ->
+      NodeElement DoctypeElement
 
     -- these are the blank and plain elements
     -- if it's in the "svg" prefix, it's definitely a plain node
@@ -157,6 +161,7 @@ process (currentNode:nextNodes) = do
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
+      NodeElement DoctypeElement  -> return ["<!DOCTYPE html>"]
       NodeElement (ApplyElement atr kids) ->
           processApply atr kids
       NodeElement (PlainElement tn atr kids) ->
