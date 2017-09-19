@@ -3,6 +3,7 @@
 module Web.Larceny.Types ( Blank(..)
                          , Fill(..)
                          , Attributes
+                         , Name(..)
                          , Substitutions
                          , subs
                          , fallbackSub
@@ -74,6 +75,9 @@ newtype Fill s = Fill { unFill :: Attributes
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
 type Attributes = Map Text Text
+
+data Name = Name { nNamespace :: Maybe Text
+                 , nName      :: Text } deriving (Eq, Ord, Show)
 
 -- | A map from a Blank to how to fill in that Blank.
 type Substitutions s = Map Blank (Fill s)

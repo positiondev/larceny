@@ -48,6 +48,7 @@ Admire your lovely app!!
 module Web.Larceny ( Blank(..)
                    , Fill(..)
                    , Attributes
+                   , Name(..)
                    , Substitutions
                    , Template(..)
                    , Path
