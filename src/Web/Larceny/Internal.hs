@@ -8,10 +8,7 @@ import           Control.Exception
 import           Lens.Micro
 import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
-import           Data.Either
-import           Data.HashSet        (HashSet)
 import qualified Data.HashSet        as HS
-import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Monoid         ((<>))
@@ -24,6 +21,7 @@ import qualified Text.XML            as X
 import           Web.Larceny.Types
 import           Web.Larceny.Fills
 import           Web.Larceny.Html    (html5Nodes, html5SelfClosingNodes)
+import           Web.Larceny.Svg     (svgNodes)
 
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
@@ -34,16 +32,72 @@ parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
   let textWithoutDoctype = LT.replace "<!DOCTYPE html>" "<doctype />" t
       (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
-  in mk o nodes
+  in mk o $! map (toLarcenyNode o) nodes
+
+-- | Phases of the template parsing/rendering process: 1. Parse the document
+--     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
+--     which encodes more information about the elements, including prefix and
+--     whether the node is a regular HTML node, a special Larceny element, or a
+--     Larceny blank. 3. Render each node into Text according to its node type.
+data Node = NodeElement Element
+          | NodeContent Text
+          | NodeComment Text
+
+data Element = PlainElement Name Attributes [Node]
+             | ApplyElement Attributes [Node]
+             | BindElement Attributes [Node]
+             | BlankElement Name Attributes [Node]
+             | DoctypeElement
+
+toLarcenyName :: X.Name -> Name
+toLarcenyName (X.Name tn _ _) =
+  case T.stripPrefix "l:" tn of
+    Just larcenyTagName -> Name (Just "l") larcenyTagName
+    Nothing -> case T.stripPrefix "svg:" tn of
+                 Just svgTagName -> Name (Just "svg") svgTagName
+                 Nothing -> Name Nothing tn
+
+toLarcenyNode :: Overrides -> X.Node -> Node
+toLarcenyNode o (X.NodeElement (X.Element tn atr nodes)) =
+  let larcenyNodes = map (toLarcenyNode o) nodes
+      attrs = M.mapKeys X.nameLocalName atr
+      allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes `HS.union` svgNodes)
+                             `HS.difference` HS.fromList (overrideNodes o)in
+  case toLarcenyName tn of
+
+    -- these are our special larceny elements
+    Name Nothing "bind" ->
+      NodeElement (BindElement attrs larcenyNodes)
+    Name Nothing "apply" ->
+      NodeElement (ApplyElement attrs larcenyNodes)
+    Name Nothing "apply-content" ->
+      NodeElement (BlankElement (Name Nothing "apply-content") attrs larcenyNodes)
+    Name Nothing "doctype" ->
+      NodeElement DoctypeElement
+
+    -- these are the blank and plain elements
+    -- if it's in the "svg" prefix, it's definitely a plain node
+    -- if there's an "l" prefix, it's definitely a Blank
+    -- if there's not a prefix, and the tag is a member of the set of plain nodes, it's plain
+    -- otherwise, it's a Blank
+    Name (Just "svg") name ->
+      NodeElement (PlainElement (Name (Just "svg") name) attrs larcenyNodes)
+    Name (Just "l") name ->
+      NodeElement (BlankElement (Name (Just "l") name) attrs larcenyNodes)
+    Name pf name | HS.member name allPlainNodes ->
+      NodeElement (PlainElement (Name pf name) attrs larcenyNodes)
+    Name _ name ->
+      NodeElement (BlankElement (Name Nothing name) attrs larcenyNodes)
+toLarcenyNode _ (X.NodeContent c)  = NodeContent c
+toLarcenyNode _ (X.NodeComment c) = NodeComment c
+toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 
 -- | Turn HTML nodes and overrides into templates.
-mk :: Overrides -> [X.Node] -> Template s
+mk :: Overrides -> [Node] -> Template s
 mk o = f
-  where allPlainNodes = (HS.fromList (customPlainNodes o) `HS.union` html5Nodes)
-                        `HS.difference` HS.fromList (overrideNodes o)
-        f nodes = let unbound = findUnbound allPlainNodes nodes in
+  where f nodes =
           Template $ \pth m l ->
-                      let pc = ProcessContext pth m l o unbound allPlainNodes f nodes in
+                      let pc = ProcessContext pth m l o f nodes in
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
@@ -74,10 +128,8 @@ data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
                                        , _pcLib           :: Library s
                                        , _pcOverrides     :: Overrides
-                                       , _pcUnbound       :: [Blank]
-                                       , _pcAllPlainNodes :: HashSet Text
-                                       , _pcMk            :: [X.Node] -> Template s
-                                       , _pcNodes         :: [X.Node]
+                                       , _pcMk            :: [Node] -> Template s
+                                       , _pcNodes         :: [Node]
                                        , _pcState         :: s }
 
 infix  4 .=
@@ -88,7 +140,7 @@ l .= b = modify (l .~ b)
 pcSubs :: Lens' (ProcessContext s) (Substitutions s)
 pcSubs = lens _pcSubs (\pc s -> pc { _pcSubs = s })
 
-pcNodes :: Lens' (ProcessContext s) [X.Node]
+pcNodes :: Lens' (ProcessContext s) [Node]
 pcNodes  = lens _pcNodes (\pc n -> pc { _pcNodes = n })
 
 pcState :: Lens' (ProcessContext s) s
@@ -100,38 +152,41 @@ add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
-process :: [X.Node] -> ProcessT s
+process :: [Node] -> ProcessT s
 process [] = return []
-process (X.NodeElement (X.Element "bind" atr kids):nextNodes) = do
+process (NodeElement (BindElement atr kids):nextNodes) = do
   pcNodes .= nextNodes
   processBind atr kids
 process (currentNode:nextNodes) = do
-  pc <- get
   pcNodes .= nextNodes
   processedNode <-
     case currentNode of
-      X.NodeElement (X.Element "doctype" _ [])  -> return ["<!DOCTYPE html>"]
-      X.NodeElement (X.Element "apply" atr kids) -> processApply atr kids
-      X.NodeElement (X.Element tn atr kids) | HS.member (X.nameLocalName tn) (_pcAllPlainNodes pc)
-                                                 -> processPlain tn atr kids
-      X.NodeElement (X.Element tn atr kids)      -> processBlank tn atr kids
-      X.NodeContent t                            -> return [t]
-      X.NodeComment c                            -> return ["<!--" <> c <> "-->"]
-      X.NodeInstruction _                        -> return []
+      NodeElement DoctypeElement  -> return ["<!DOCTYPE html>"]
+      NodeElement (ApplyElement atr kids) ->
+          processApply atr kids
+      NodeElement (PlainElement tn atr kids) ->
+          processPlain tn atr kids
+      NodeElement (BlankElement (Name _ name) atr kids) ->
+          processBlank name atr kids
+      NodeContent t ->
+          return [t]
+      NodeComment c ->
+          return ["<!--" <> c <> "-->"]
+      _ ->
+          return []
   restOfNodes <- process nextNodes
   return $ processedNode ++ restOfNodes
 
 -- Add the open tag and attributes, process the children, then close
 -- the tag.
-processPlain :: X.Name ->
-                Map X.Name Text ->
-                [X.Node] ->
+processPlain :: Name ->
+                Attributes ->
+                [Node] ->
                 ProcessT s
-processPlain tn atr kids = do
+processPlain tagName atr kids = do
   pc <- get
   atrs <- attrsToText atr
   processed <- process kids
-  let tagName = X.nameLocalName tn
   return $ tagToText (_pcOverrides pc) tagName atrs processed
 
 selfClosing :: Overrides -> HS.HashSet Text
@@ -139,18 +194,19 @@ selfClosing (Overrides _ _ sc) =
   HS.fromList sc <> html5SelfClosingNodes
 
 tagToText :: Overrides
-          -> Text
+          -> Name
           -> Text
           -> [Text]
           -> [Text]
-tagToText overrides tagName atrs processed =
-  if tagName `HS.member` selfClosing overrides
-  then ["<" <> tagName <> atrs <> "/>"]
-  else ["<" <> tagName <> atrs <> ">"]
+tagToText overrides (Name mPf name) atrs processed =
+  let prefix = fromMaybe "" ((\pf -> pf <> ":") <$> mPf) in
+  if name `HS.member` selfClosing overrides
+  then ["<" <> prefix <> name <> atrs <> "/>"]
+  else ["<" <> prefix <> name <> atrs <> ">"]
            ++ processed
-           ++ ["</" <> tagName <> ">"]
+           ++ ["</" <> prefix <> name <> ">"]
 
-attrsToText :: Map X.Name Text -> StateT (ProcessContext s) IO Text
+attrsToText :: Attributes -> StateT (ProcessContext s) IO Text
 attrsToText attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
@@ -161,17 +217,17 @@ attrsToText attrs =
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
-fillAttrs :: Map X.Name Text -> StateT (ProcessContext s) IO (Map X.Name Text)
+fillAttrs :: Attributes -> StateT (ProcessContext s) IO Attributes
 fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
           keys <- T.concat <$> mapM fillAttr unboundKeys
           vals <- T.concat <$> mapM fillAttr unboundValues
-          return (X.Name keys Nothing Nothing, vals)
+          return (keys, vals)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
-  do (ProcessContext pth m l _ _ _ mko _ _) <- get
+  do (ProcessContext pth m l _ mko _ _) <- get
      toProcessState $
        case eBlankText of
          Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
@@ -180,23 +236,22 @@ fillAttr eBlankText =
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the
 -- outer substitution) and the library.
-processBlank :: X.Name ->
-                Map X.Name Text ->
-                [X.Node] ->
+processBlank :: Text ->
+                Attributes ->
+                [Node] ->
                 ProcessT s
-processBlank tn atr kids = do
-  (ProcessContext pth m l _ _ _ mko _ _) <- get
-  let tagName = X.nameLocalName tn
+processBlank tagName atr kids = do
+  (ProcessContext pth m l _ mko _ _) <- get
   filled <- fillAttrs atr
   sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
-                    (M.mapKeys X.nameLocalName filled)
+                    filled
                     (pth, add m (mko kids)) l]
 
-processBind :: Map X.Name Text ->
-               [X.Node] ->
+processBind :: Attributes ->
+               [Node] ->
                ProcessT s
 processBind atr kids = do
-  (ProcessContext pth m l _ _ _ mko nodes _) <- get
+  (ProcessContext pth m l _ mko nodes _) <- get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
@@ -207,11 +262,11 @@ processBind atr kids = do
 -- create a substitution for the content hole using the child elements
 -- of the apply tag, then run the template with that substitution
 -- combined with outer substitution and the library.
-processApply :: Map X.Name Text ->
-                [X.Node] ->
+processApply :: Attributes ->
+                [Node] ->
                 ProcessT s
 processApply atr kids = do
-  (ProcessContext pth m l _ _ _ mko _ _) <- get
+  (ProcessContext pth m l _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- toProcessState $ runTemplate (mko kids) pth m l
@@ -221,7 +276,7 @@ processApply atr kids = do
 
 findTemplateFromAttrs :: Path ->
                          Library s ->
-                         Map X.Name Text ->
+                         Attributes ->
                          (Path, Template s)
 findTemplateFromAttrs pth l atr =
   let tplPath = T.splitOn "/" $ fromMaybe (throw $ AttrMissing "template")
@@ -237,21 +292,8 @@ findTemplate lib pth' targetPath =
     Just tpl -> (pth' ++ targetPath, Just tpl)
     Nothing  -> findTemplate lib (init pth') targetPath
 
-findUnbound :: HashSet Text -> [X.Node] -> [Blank]
-findUnbound _ [] = []
-findUnbound plainNodes (X.NodeElement (X.Element name atr kids):ns) =
-     let tn = X.nameLocalName name in
-     if tn == "apply" || tn == "bind" || HS.member tn plainNodes
-     then findUnboundAttrs atr ++ findUnbound plainNodes kids
-     else Blank tn : findUnboundAttrs atr ++ findUnbound plainNodes ns
-findUnbound plainNodes (_:ns) = findUnbound plainNodes ns
-
-findUnboundAttrs :: Map X.Name Text -> [Blank]
-findUnboundAttrs atrs =
-  rights $ concatMap (uncurry (<>) . eUnboundAttrs) (M.toList atrs)
-
-eUnboundAttrs :: (X.Name, Text) -> ([Either Text Blank], [Either Text Blank])
-eUnboundAttrs (X.Name n _ _, value) = do
+eUnboundAttrs :: (Text, Text) -> ([Either Text Blank], [Either Text Blank])
+eUnboundAttrs (name, value) = do
   let possibleWords = T.splitOn "${"
   let mWord w =
         case T.splitOn "}" w of
@@ -259,7 +301,7 @@ eUnboundAttrs (X.Name n _ _, value) = do
           ["",_] -> [Left ("${" <> w)]
           (word: rest) -> Right (Blank word) : map Left rest
           _ -> [Left w]
-  ( concatMap mWord (possibleWords n)
+  ( concatMap mWord (possibleWords name)
     , concatMap mWord (possibleWords value))
 
 {-# ANN module ("HLint: ignore Redundant lambda" :: String) #-}

@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 {-|
 
@@ -48,6 +48,7 @@ Admire your lovely app!!
 module Web.Larceny ( Blank(..)
                    , Fill(..)
                    , Attributes
+                   , Name(..)
                    , Substitutions
                    , Template(..)
                    , Path
@@ -81,20 +82,20 @@ module Web.Larceny ( Blank(..)
                    , parse
                    , parseWithOverrides) where
 
-import           Control.Monad       (filterM)
-import           Control.Monad.State (evalStateT)
-import qualified Data.Map            as M
-import           Data.Monoid         ((<>))
-import           Data.Text           (Text)
-import qualified Data.Text           as T
-import qualified Data.Text.IO        as ST
-import qualified Data.Text.Lazy      as LT
-import           System.Directory    (doesDirectoryExist, listDirectory)
-import           System.FilePath     (dropExtension, takeExtension)
+import           Control.Monad        (filterM)
+import           Control.Monad.State  (evalStateT)
+import qualified Data.Map             as M
+import           Data.Monoid          ((<>))
+import           Data.Text            (Text)
+import qualified Data.Text            as T
+import qualified Data.Text.IO         as ST
+import qualified Data.Text.Lazy       as LT
+import           System.Directory     (doesDirectoryExist, listDirectory)
+import           System.FilePath      (dropExtension, takeExtension)
 ------------
-import           Web.Larceny.Types
-import           Web.Larceny.Internal
 import           Web.Larceny.Fills
+import           Web.Larceny.Internal
+import           Web.Larceny.Types
 
 -- | Render a template from the library by path.
 --

@@ -1,8 +1,9 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Web.Larceny.Types ( Blank(..)
                          , Fill(..)
                          , Attributes
+                         , Name(..)
                          , Substitutions
                          , subs
                          , fallbackSub
@@ -17,7 +18,7 @@ module Web.Larceny.Types ( Blank(..)
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
-import           Data.Hashable       (Hashable, hashWithSalt, hash)
+import           Data.Hashable       (Hashable, hash, hashWithSalt)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
 import           Data.Monoid         ((<>))
@@ -74,6 +75,9 @@ newtype Fill s = Fill { unFill :: Attributes
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
 type Attributes = Map Text Text
+
+data Name = Name { nNamespace :: Maybe Text
+                 , nName      :: Text } deriving (Eq, Ord, Show)
 
 -- | A map from a Blank to how to fill in that Blank.
 type Substitutions s = Map Blank (Fill s)
