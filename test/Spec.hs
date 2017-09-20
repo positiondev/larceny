@@ -511,6 +511,7 @@ conditionalTests = do
            subs [("if", ifFill)
                 ,("userIsLoggedIn", textFill "False")]
         template "${userIsLoggedIn}" `shouldRenderM` "It's false!"
+
   describe "exists" $ do
     let template =
           "<if exists=\"${existing}\">\
@@ -523,6 +524,18 @@ conditionalTests = do
            subs [("if", ifFill)
                 ,("existing", textFill "exists")]
         template `shouldRenderM` "It exists!"
+    describe "the fill is the string \"False\"" $
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "False")]
+        template `shouldRenderM` "It False!"
+    describe "the fill is an empty string" $
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "")]
+        template `shouldRenderM` "It doesn't exist!"
     describe "the fill doesn't exist" $ do
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
@@ -544,7 +557,7 @@ conditionalTests = do
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
-        template"True" `shouldRenderM` "It doesn't exist and/or it's false!"
+        template "True" `shouldRenderM` "It doesn't exist and/or it's false!"
       it "should display the stuff within the `else` tag" $ do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)
