@@ -73,6 +73,7 @@ module Web.Larceny ( Blank(..)
                    , fillChildrenWith'
                    , maybeFillChildrenWith
                    , maybeFillChildrenWith'
+                   , ifFill
                    , useAttrs
                    , FromAttribute(..)
                    , AttrError(..)

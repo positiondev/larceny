@@ -179,6 +179,9 @@ instance FromAttribute Int where
   fromAttribute Nothing = Left AttrMissing
 instance FromAttribute a => FromAttribute (Maybe a) where
   fromAttribute = traverse $ fromAttribute . Just
+instance FromAttribute Bool where
+  fromAttribute (Just attr) = maybe (Left $ AttrUnparsable "Bool") Right $ readMaybe $ T.unpack attr
+  fromAttribute Nothing = Left AttrMissing
 
 data ApplyError = ApplyError Path Path deriving (Eq)
 instance Show ApplyError where

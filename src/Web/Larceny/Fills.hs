@@ -11,6 +11,7 @@ module Web.Larceny.Fills ( textFill
                          , fillChildrenWith'
                          , maybeFillChildrenWith
                          , maybeFillChildrenWith'
+                         , ifFill
                          , useAttrs
                          , a
                          , (%)) where
@@ -18,11 +19,51 @@ module Web.Larceny.Fills ( textFill
 import           Control.Exception
 import           Control.Monad.State (StateT)
 import qualified Data.Map            as M
+import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified HTMLEntities.Text   as HE
 ------------
 import           Web.Larceny.Types
+
+
+-- | A conditional fill.
+--
+-- There are two options: `if` can test if the \"condition\" attribute
+-- (a Bool) is True, or it can test if the \"exists\" attribute contains
+-- non-empty Text.
+--
+-- If the conditions provided are true, the `then` block will be filled
+-- in. If the conditions are not true, then the `else` block will be filled in.
+--
+-- @
+-- <if condition=\"True\">
+--    <then>It's true!</then>
+--    <else>It's false!</else>
+-- </if>
+-- @
+-- > It's true!
+--
+-- @
+-- <if exists=\"some text\">
+--    <then>It exists!</then>
+--    <else>It doesn't exist!</else>
+-- </if>
+-- @
+-- > It exists!
+ifFill :: Fill s
+ifFill =
+  useAttrs (a "condition" % a "exists") ifFill'
+  where ifFill' :: Maybe Bool -> Maybe Text -> Fill s
+        ifFill' mCondition mExisting =
+          let condition = fromMaybe True mCondition
+              existing = fromMaybe "exist" mExisting
+              bool = condition && existing /= ""
+              thenElseSubs = subs [("then", thenFill bool)
+                                  ,("else", thenFill (not bool))] in
+          fillChildrenWith thenElseSubs
+        thenFill True = fillChildren
+        thenFill False = textFill ""
 
 -- | A plain text fill.
 --

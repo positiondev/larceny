@@ -418,6 +418,7 @@ spec = hspec $ do
     fallbackTests
     attrTests
     doctypeTests
+    conditionalTests
     namespaceTests
   statefulTests
 
@@ -481,6 +482,91 @@ doctypeTests = do
     it "should render doctype in the correct place" $ do
       "<!DOCTYPE html><html><p>Hello world</p></html>"
       `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
+
+conditionalTests :: SpecWith LarcenyHspecState
+conditionalTests = do
+  describe "conditionals" $ do
+    let template cond =
+          "<if condition=\"" <> cond <> "\">\
+          \  <then>It's true!</then>\
+          \  <else>It's false!</else>\
+          \</if>"
+    describe "true condition" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template "True" `shouldRenderM` "It's true!"
+      it "should work with a blank in the attribute" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("userIsLoggedIn", textFill "True")]
+        template "${userIsLoggedIn}" `shouldRenderM` "It's true!"
+    describe "false condition" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template "False" `shouldRenderM` "It's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("userIsLoggedIn", textFill "False")]
+        template "${userIsLoggedIn}" `shouldRenderM` "It's false!"
+
+  describe "exists" $ do
+    let template =
+          "<if exists=\"${existing}\">\
+          \  <then>It <existing />!</then>\
+          \  <else>It doesn't exist!</else>\
+          \</if>"
+    describe "the fill exists" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        template `shouldRenderM` "It exists!"
+    describe "the fill is the string \"False\"" $
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "False")]
+        template `shouldRenderM` "It False!"
+    describe "the fill is an empty string" $
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "")]
+        template `shouldRenderM` "It doesn't exist!"
+    describe "the fill doesn't exist" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template `shouldRenderM` "It doesn't exist!"
+  describe "using condition and exists at the same time" $ do
+    let template cond =
+          "<if condition=\"" <> cond <> "\" exists=\"${existing}\">\
+          \  <then>It <existing />!</then>\
+          \  <else>It doesn't exist and/or it's false!</else>\
+          \</if>"
+    describe "condition is true and tag exists" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        template "True" `shouldRenderM` "It exists!"
+    describe "any other combination" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template "True" `shouldRenderM` "It doesn't exist and/or it's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("existing", textFill "exists")]
+        template "False" `shouldRenderM` "It doesn't exist and/or it's false!"
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template "False" `shouldRenderM` "It doesn't exist and/or it's false!"
 
 
 fallbackTests ::SpecWith LarcenyHspecState
