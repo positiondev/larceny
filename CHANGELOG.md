@@ -1,5 +1,9 @@
 # Changelog
 
+## 2017-9-20
+ * Add `ifFill`, which allows you to make conditional fills.
+ * Fix doctype bug -- HTML5 doctype is replaced after tagstream strips it out.
+
 ## 2017-7-26
  * Add support for SVG tags -- this BREAKS any substitutions using the same name as an SVG tag
  * Add larceny ("l") prefix for ambiguous tags
