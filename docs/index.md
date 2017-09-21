@@ -1,9 +1,9 @@
-# Using Larceny
-
 [Writing templates](templates)
 
-[Rendering templates your app](rendering)
+[Writing fills using helper functions](fills)
 
-[Writing fills](fills)
+[Writing fills "from scratch"](fills)
 
-[Common patterns](patterns)
+[Using conditionals](conditionals)
+
+Coming soon: Larceny cookbook! (recipes for common frontend development needs)

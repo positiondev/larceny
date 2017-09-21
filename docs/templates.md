@@ -2,30 +2,31 @@
 
 Larceny templates look a lot like regular HTML, but you can imagine
 that they have blank spaces that can be filled in with other
-data. Larceny also adds three special tags, `bind`, `apply`, and
+data.
+
+Larceny also adds three special tags, `bind`, `apply`, and
 `apply-content`.
 
-Since Larceny is directly inspired by [Heist](heist) and Heist
+Since Larceny is directly inspired by [Heist](https://hackage.haskell.org/package/heist) and Larceny
 templates are intended to be compatible with Heist, much of this
 article is applicable to Heist as well.
 
 ## Template files
 
-Create a new text file with a ".tpl" extension for each template. You
-can organize these into directories however seems natural to you!
-
-Soon I'll have an example application attached to this so you can see
-one way to organize templates.
+Template files are plain text files that end with the suffix `.tpl`.
 
 ## Blanks
 
-Here is an example of a template with a "Blank":
+"Blanks" are the spaces in your template that get filled in with text supplied
+by your application backend.
+
+Here is an example of a template with a Blank:
 
 ```
   <div id="header"><myPageTitle /></div>
 ```
 
-`<myPageTitle />` is a blank labeled `myPageTitle`.
+`<myPageTitle />` is a Blank labeled `myPageTitle`.
 
 You can also put Blanks in attributes:
 
@@ -33,12 +34,13 @@ You can also put Blanks in attributes:
   <a href="profile/${userID}"><userName /></a>
 ```
 
-In the above example, `${userID}` and `<userName />` are both Blanks.
+In the above example, `${userID}` and `<userName />` are both Blanks. The
+`${blankName}` form is only used within attributes.
 
 You can fill in Blanks by writing [Fills](fills) in Haskell.
 
-If Larceny can't find a Fill for some Blank, it will throw an error
-instead of loading the template. (This is different from Heist.)
+If Larceny can't find a Fill for some Blank, it will just leave an empty space.
+You'll see a warning message in your logs as well.
 
 ## Bind
 
@@ -79,7 +81,7 @@ Here is how you use `<apply>` to include this template:
 
       <p>This is the rest of the page.</p>
     </body>
-  </body>
+  </html>
 ```
 
 The "template" attribute tells what template to include. You can also
@@ -110,7 +112,7 @@ render) to the template fragments that the root template needs.
 The only difference between this template and the earlier one is that
 in this one, the `<apply>` tag has some text inside it.
 
-The "_header" template looks different too:
+The "\_header" template looks different too:
 
 ```
   <div id="header">
@@ -126,7 +128,7 @@ The rendered HTML will look something like this:
 ```
   <html>
     <body>
-      <div id="header>
+      <div id="header">
         The title of my page!
       </div>
 
@@ -141,9 +143,17 @@ Often web developers want to make a "base" template. The base template
 includes the main page content, a header, and a footer (and any other
 components you want). Here is how you do that in Larceny.
 
-We'll use the "\_header" template from before, and pretend we have a
-similar one called "\_footer". But now we'll also have a
-"\_base" template:
+We'll use the "\_header" template from before, and a similar one called
+"\_footer".
+
+```
+  <div id="footer">
+    This is a footer.
+  </div>
+```
+
+
+But now we'll also have a "\_base" template:
 
 ```
   <html>
@@ -191,8 +201,7 @@ The rendered result is this:
     This is the body of the page.
 
     <div id="footer">
-      This footer is so boring I didn't show it to
-      you.
+      This is a footer.
     </div>
   </body>
 </html>

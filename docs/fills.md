@@ -1,148 +1,188 @@
-# Writing Fills
+# Writing Fills with helper functions
 
 Fills are how you fill-in the Blanks in your [templates](templates).
 
 There are lots of helper functions for writing fills, listed
-[here](here). You should be able to do almost everything you want with
+below. You should be able to do almost everything you want with
 these helper functions! But if you want to do something special, you
-can write fills "from scratch". It's a little more complicated, so if
-you have questions don't hesitate to open an issue and ask, or email
-larceny@positiondev.com.
+can [write fills "from scratch"](fills-fromscratch). It's a little more complicated, so if
+you have questions don't hesitate to open an issue and ask.
 
-## The type of a Fill
+Larceny helper function tend to have at least two variants: a pure version and a
+stateful, potentially side-effecting version. The variants are exactly the same
+except the latter takes a `StateT s IO` version of whatever the pure version
+takes. (This will make more sense when you see the type signatures.)
 
-A Fill is *how* you fill in the Blank, so it's a function.
+## `textFill :: Text -> Fill s`
 
+A plain text fill, HTML escaped.
 ```
-newtype Fill s = Fill { unFill :: Attributes
-                               -> (Path, Template s)
-                               -> Library s
-                               -> StateT s IO Text }
-```
-
-1. `Attributes` -- these are the attributes of the Blank as an HTML
-tag.
-2. `(Path, Template s)` -- the child elements of the Blank and
-the template's path.
-3. `Library s` -- The template library
-
-And given these ingredients, the function will give you `StateT s IO
-Text`. This complicated type is so that you can store and change state
-(like what's been rendered so far in the template) and you can do side
-effects (like read from a database). You can think of `StateT s IO
-Text` as combination of state, text, and side effects.
-
-When you use `evalStateT` from [Control.Monad.State] on a Fill given
-all its ingredients, and give it the current state, it will return
-some `IO Text`.
-
-Example:
-
-```
-import Control.Monad.State (evalStateT)
-
-type MyState = [Text]
-
-
-
-initialState :: [Text]
-initialState = ["hello"]
-
-aFill :: Fill MyState
-aFill = Fill myFill
-  where myFill attributes (path, template) library =
-          return "some text"
-
-fillToText :: Fill MyState -> StateT MyState IO Text
-fillToText someFill = unFill someFill attr (pth, template) library
+textFill "This text will be escaped and displayed in place of the blank"
 ```
 
-### Attributes
+## `rawTextFill :: Text -> Fill s`
 
-Attributes are a [Map](Data.Map) from attribute names to attribute
-values.
-
-If you had a Blank like this: `<description length="10" />`, its
-Attributes would be something like this: `fromList [("length", "10")]`.
-
-### (Path, Template s)
-
-This is a tuple of a Path and a Template. The Path is the path to the
-Template that's being rendered right now. But the Template is not that
-whole template. Instead, it's just the bit that is *inside* of the
-Blank.
-
-Here's an example. This is a template called "hello.tpl" inside of a
-directory called "pages".
-
-(pages/hello.tpl)
-```
-<greeting>
-  Hello!
-</greeting>
-```
-
-If you were writing a Fill for this `<greeting>` Blank, it would have
-the Path `["pages", "hello"]`.
-
-The `Template s` is the unrendered stuff *inside* of
-`<greeting>`. It's not just text, because it might have Blanks inside
-of it that you want to get rendered.
-
-(Insert here an example of how to run a template to get text.)
-
-#### Example
-
-Let's say that we want to make a Fill that reverses all the text
-within a Blank.  This isn't necessarily a great idea but it's
-possible.
-
-We want this:
+A plain text fill, without HTML escaping.
 
 ```
-<reverse>Reverse this text!</reverse>
+rawtextFill "This text will be displayed in place of the blank, <em>unescaped</em>"
 ```
 
-to render like this:
+## `textFill' :: StateT s IO Text -> Fill s` 
+
+Use state or IO, then fill in some text.
 
 ```
-!txet siht esrseveR
+-- getTextFromDatabase :: StateT () IO Text
+textFill' getTextFromDatabase
 ```
 
-What does that look like?
+## `rawTextFill' :: StateT s IO Text -> Fill s`
+
+Use state or IO, then fill in some unescaped text.
 
 ```
-reverseFill :: Fill s
-reverseFill _attrs (pth, tpl) lib =
-  state <- get
-  renderedText <- evalStateT (runTemplate pth mempty lib) () state
-  return $ reverse text
+-- getTextFromDatabase :: StateT () IO Text
+rawtextFill' getTextFromDatabase
 ```
 
-We use `get`(link) to get the current state. Then we run the
-template and use `evalStateT` to get the text. Then, return
-the reversed text.
+## `mapSubs :: (a -> Substitutions s) -> [a] -> Fill s`
 
-The reason why this isn't a great idea is that `text` could include
-HTML tags! So this:
+Create substitutions for each element in a list and fill the child nodes with
+those substitutions.
 
 ```
-<reverse>Reverse <em>this</em> text!</reverse>
+<members><name /></members>
+
+("members", mapSubs (\name -> subs [("name", textFill name)])
+                     ["Bonnie Thunders", "Donna Matrix", "Beyonslay"]
 ```
 
-will result in this:
+Result:
+
+`> Bonnie Thunders Donna Matrix Beyonslay`
+
+## `fillChildren :: Fill s`
+
+Fill in the child nodes of the blank with substitutions already available.
 
 ```
-!txet <me/>siht<me> esreveR
+<no-op><p>Same</p></no-op>
+
+("no-op", fillChildren)
 ```
 
-Which is not valid HTML. :)
+Result:
 
-If you wanted to avoid that, you could parse `text`'s HTML with
-Blaze or something, then run `reverse` over the text nodes of
-the HTML tree. I'll leave that as an exercise for the reader!
+`> <p>Same</p>`
 
-### Library s
+## `fillChildrenWith :: Substitutions s -> Fill s`
 
-This is the collection of templates that have been loaded ahead of
-time.
+Fill in the child nodes of the blank with new substitutions.
+
+```
+<member><name /></member>
+
+("skater", fillChildrenWith (subs $ [("name", textFill "Bonnie Thunders")]))
+```
+
+Result:
+
+`> Beyonslay`
+
+## `fillChildrenWith' :: StateT s IO (Substitutions s) -> Fill s`
+
+Use substitutions with State and IO.
+
+```
+<changeTheWorld><results /></changeTheWorld>
+
+-- doABunchOfStuffAndGetSubstitutions :: StateT () IO (Substitutions ())
+("changeTheWorld", fillChildrenWith' doStuffAndGetSubstitutions)
+```
+
+Result (perhaps):
+
+`> This template did IO!`
+
+## `maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s`
+
+Fill with substitutions if those substitutions are provided.
+
+```
+<ifDisplayUser><userName /></ifDisplayUser>
+
+("ifDisplayUser", maybeFillChildrenWith
+                    (Just $ subs' ("userName", textFill "Bonnie Thunders")))
+```
+Result:
+
+`> Bonnie Thunders`
+
+## `maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s`
+
+Use state and IO and maybe fill in with some substitutions.
+
+```
+<ifLoggedIn>Logged in as <userName /></ifLoggedIn>
+
+("ifLoggedIn", maybeFillChildrenWith' $ do
+                  mUser <- getLoggedInUser -- returns (Just "Bonnie Thunders")
+                  case mUser of
+                    Just user -> Just $ subs' ("userName", textFill user)
+                    Nothing   -> Nothing)
+```
+
+# Working with attributes
+
+Often you may want to use attributes as "inputs" to your fills. These functions
+may be helpful! The type signatures are ommitted because those are *not*
+actually helpful, IMO.
+
+## `useAttrs`
+
+Use attributes from the the Blank as arguments to the Fill.
+
+```
+<desc length="10" />
+
+("desc", useAttrs (a"length") descriptionFill)
+
+descriptionFill len = textFill $ T.take len
+                                  "A really long description"
+                                  <> "..."))
+```
+
+Result:
+
+`> A really l...`
+
+## `a`
+
+Prepend `a` to the name of an attribute to pass the value of that attribute to
+the fill.
+
+The type of the attribute is whatever type the fill expects. If `a` can't parse
+the value, then there will be an error when the template is rendered.
+
+## `%`
+
+Use with `a` to use multiple attributes in the fill.
+
+```
+<desc length="10" />
+
+("desc", useAttrs (a"length" % a"ending") descriptionFill)
+
+descriptionFill len maybeEnding =
+  let ending = fromMaybe "..." maybeEnding in
+  textFill $ T.take n
+              "A really long description"
+              <> ending))
+```
+
+Result:
+
+`> A really l...`
+
+
