@@ -541,6 +541,7 @@ conditionalTests = do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
         template `shouldRenderM` "It doesn't exist!"
+
   describe "using condition and exists at the same time" $ do
     let template cond =
           "<if condition=\"" <> cond <> "\" exists=\"${existing}\">\
@@ -567,6 +568,34 @@ conditionalTests = do
         hLarcenyState.lSubs .=
            subs [("if", ifFill)]
         template "False" `shouldRenderM` "It doesn't exist and/or it's false!"
+
+  describe "using `exists` for lists and nested tags" $ do
+    let template =
+          "<bind tag=\"rendered\"><list><l:i /></bind>\
+          \<if exists=\"${rendered}\">\
+          \  <then>It is not empty! <list><l:i /></list></then>\
+          \  <else>It is empty!</else>\
+          \</if>"
+
+    describe "list is not empty" $ do
+      it "should display the stuff within the `then` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("list", mapSubs (\i -> subs [("i", textFill i)]) ["a", "b", "c"])]
+        template `shouldRenderM` "It is not empty! abc"
+
+    describe "list is empty" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)
+                ,("list", mapSubs (\i -> subs [("i", textFill i)]) [])]
+        template `shouldRenderM` "It is empty!"
+
+    describe "list is doesn't exist" $ do
+      it "should display the stuff within the `else` tag" $ do
+        hLarcenyState.lSubs .=
+           subs [("if", ifFill)]
+        template `shouldRenderM` "It is empty!"
 
 
 fallbackTests ::SpecWith LarcenyHspecState
