@@ -37,20 +37,32 @@ import           Web.Larceny.Types
 -- in. If the conditions are not true, then the `else` block will be filled in.
 --
 -- @
--- <if condition=\"True\">
---    <then>It's true!</then>
---    <else>It's false!</else>
--- </if>
+-- \<if condition=\"True\">
+--    \<then>It's true!\<\/then>
+--    \<else>It's false!\<\/else>
+-- \<\/if>
 -- @
 -- > It's true!
 --
 -- @
--- <if exists=\"some text\">
---    <then>It exists!</then>
---    <else>It doesn't exist!</else>
--- </if>
+-- \<if exists=\"some text\">
+--    \<then>It exists!\<\/then>
+--    \<else>It doesn't exist!\<\/else>
+-- \<\/if>
 -- @
 -- > It exists!
+--
+-- You can also use exists to see if a list or nested tag is empty, in
+-- combination with `bind`.
+--
+-- @
+-- \<bind tag=\"renderedList\">\<list>\<listItem />\<\/list>\<\/bind>
+-- \<if exists=\"${renderedList}\">
+--   \<then>This list is not empty.\<\/then>
+--   \<else>This list is empty!\</else>
+-- <\/if>
+-- @
+-- > This list is not empty.
 ifFill :: Fill s
 ifFill =
   useAttrs (a "condition" % a "exists") ifFill'

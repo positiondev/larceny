@@ -571,7 +571,7 @@ conditionalTests = do
 
   describe "using `exists` for lists and nested tags" $ do
     let template =
-          "<bind tag=\"rendered\"><list><l:i /></bind>\
+          "<bind tag=\"rendered\"><list><l:i /></list></bind>\
           \<if exists=\"${rendered}\">\
           \  <then>It is not empty! <list><l:i /></list></then>\
           \  <else>It is empty!</else>\
