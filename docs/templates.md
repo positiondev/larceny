@@ -7,10 +7,6 @@ data.
 Larceny also adds three special tags, `bind`, `apply`, and
 `apply-content`.
 
-Since Larceny is directly inspired by [Heist](https://hackage.haskell.org/package/heist) and Larceny
-templates are intended to be compatible with Heist, much of this
-article is applicable to Heist as well.
-
 ## Template files
 
 Template files are plain text files that end with the suffix `.tpl`.
