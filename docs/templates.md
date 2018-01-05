@@ -16,31 +16,61 @@ Template files are plain text files that end with the suffix `.tpl`.
 "Blanks" are the spaces in your template that get filled in with text supplied
 by your application backend.
 
-Here is an example of a template with a Blank:
+Here is an example of a template with a blank:
 
 ```
   <div id="header"><myPageTitle /></div>
 ```
 
-`<myPageTitle />` is a Blank labeled `myPageTitle`.
+`<myPageTitle />` is a blank labeled `myPageTitle`.
 
-You can also put Blanks in attributes:
+You can also put blanks in attributes:
 
 ```
   <a href="profile/${userID}"><userName /></a>
 ```
 
-In the above example, `${userID}` and `<userName />` are both Blanks. The
+In the above example, `${userID}` and `<userName />` are both blanks. The
 `${blankName}` form is only used within attributes.
 
-You can fill in Blanks by writing [Fills](fills) in Haskell.
+You can fill in blanks by writing [fills](fills) in Haskell.
 
-If Larceny can't find a Fill for some Blank, it will just leave an empty space.
+If Larceny can't find a fill for some blank, it will just leave an empty space.
 You'll see a warning message in your logs as well.
+
+### Nested blanks
+
+Just like regular HTML tags, blanks can contain other blanks.
+
+Here is a blank that represents a user. It contains blanks that 
+are filled in with the user's name and other information.
+
+```
+<user>
+  Name: <userName />
+  Age: <userAge />
+</user>
+```
+
+### List blanks
+
+Blanks can also represent lists of Fills.
+
+Here's a blank for a list of users. Everything inside the 
+`<users>` blank is repeated for each user.
+
+```
+<users>
+  <user>
+    Name: <userName />
+    Age: <userAge />
+  </user>
+</users>
+```
 
 ## Bind
 
-You can use `<bind>` to create new Fills directly in your
+You can use `<bind>` to create new fills directly in your
 template. For example:
 
 ```
