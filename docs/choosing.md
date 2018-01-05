@@ -14,10 +14,10 @@ In another language, to display some content to only some users, you might write
 
 ```
 <div>
-  % if @user.age >= 21 %
-    <p>Click here to buy alcoholic beverages!</p>
+  % if @user.admin? %
+    <p>Welcome, admin user!</p>
   % else %
-    <p>Alcohol is for adults over 21!</p>
+    <p>Welcome, user!</p>
   % end %
 </div>
 ```
@@ -27,19 +27,19 @@ frontend in the form of a "Substitution":
 
 ```
 <div>
-  <if condition="${userCanBuyAlcohol}">
+  <if condition="${isAdmin}">
     <then>
-      <p>Click here to buy alcoholic beverages!</p>
+      <p>Wecome, admin user!</p>
     </then>
 
     <else>
-      <p>Alcohol is for adults over 21!</p>
+      <p>Welcome user!</p>
     </else>
   </if>
 </div>
 ```
 
-Here, "userCanBuyAlcohol" is substituted by the backend for the word "True" or
+Here, "isLoggedIn" is substituted by the backend for the word "True" or
 "False", and the "if" Fill chooses which branch to display. So, the result is
 the same as the previous example, but the logic is partly hidden in the backend.
 
