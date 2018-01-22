@@ -5,6 +5,7 @@ module Web.Larceny.Internal ( findTemplate
                             , parseWithOverrides) where
 
 import           Control.Exception
+import           Control.Logging     (log')
 import           Lens.Micro
 import           Control.Monad.Trans (liftIO)
 import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
@@ -121,7 +122,7 @@ fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank 
 fallbackFill (Blank tn) m =
   let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
   Fill $ \attr (pth, tpl) lib ->
-    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+    do liftIO $ log' $ "Larceny: Missing fill for blank " <> tn <> " in template " <> (T.pack $ show pth)
        unFill fallback attr (pth, tpl) lib
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
