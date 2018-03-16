@@ -24,7 +24,7 @@ library
                      , Web.Larceny.Types
                      , Web.Larceny.Fills
   other-extensions:    OverloadedStrings
-  build-depends:       base >=4.8 && <4.10
+  build-depends:       base >=4.8 && <5
                      , containers >=0.5 && <0.6
                      , unordered-containers
                      , hashable
