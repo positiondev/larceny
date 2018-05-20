@@ -14,7 +14,10 @@ module Web.Larceny.Types ( Blank(..)
                          , defaultOverrides
                          , FromAttribute(..)
                          , AttrError(..)
-                         , ApplyError(..)) where
+                         , ApplyError(..)
+                         , LarcenyState(..)
+                         , Node(..)
+                         , Element(..)) where
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
@@ -25,6 +28,26 @@ import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Text.Read           (readMaybe)
+
+data Node = NodeElement Element
+          | NodeContent Text
+          | NodeComment Text
+
+data Element = PlainElement Name Attributes [Node]
+             | ApplyElement Attributes [Node]
+             | BindElement Attributes [Node]
+             | BlankElement Name Attributes [Node]
+             | DoctypeElement
+
+data LarcenyState s =
+  LarcenyState { _lPath      :: [Text]
+               , _lSubs      :: Substitutions s
+               , _lLib       :: Library s
+               , _lOverrides :: Overrides
+               , _lLogger    :: (Text -> IO ())
+               , _lMk        :: [Node] -> Template s
+               , _lNodes     :: [Node]
+               , _lAppState  :: s }
 
 -- | Corresponds to a "blank" in the template that can be filled in
 -- with some value when the template is rendered.  Blanks can be tags

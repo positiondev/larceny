@@ -23,6 +23,12 @@ import           Web.Larceny.Fills
 import           Web.Larceny.Html    (html5Nodes, html5SelfClosingNodes)
 import           Web.Larceny.Svg     (svgNodes)
 
+-- | Phases of the template parsing/rendering process: 1. Parse the document
+--     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
+--     which encodes more information about the elements, including prefix and
+--     whether the node is a regular HTML node, a special Larceny element, or a
+--     Larceny blank. 3. Render each node into Text according to its node type.
+
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
 parse = parseWithOverrides defaultOverrides
@@ -34,20 +40,6 @@ parseWithOverrides o t =
       (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
   in mk o $! map (toLarcenyNode o) nodes
 
--- | Phases of the template parsing/rendering process: 1. Parse the document
---     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
---     which encodes more information about the elements, including prefix and
---     whether the node is a regular HTML node, a special Larceny element, or a
---     Larceny blank. 3. Render each node into Text according to its node type.
-data Node = NodeElement Element
-          | NodeContent Text
-          | NodeComment Text
-
-data Element = PlainElement Name Attributes [Node]
-             | ApplyElement Attributes [Node]
-             | BindElement Attributes [Node]
-             | BlankElement Name Attributes [Node]
-             | DoctypeElement
 
 toLarcenyName :: X.Name -> Name
 toLarcenyName (X.Name tn _ _) =
@@ -123,16 +115,6 @@ fallbackFill (Blank tn) m =
   Fill $ \attr (pth, tpl) lib ->
     do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
        unFill fallback attr (pth, tpl) lib
-
-data LarcenyState s =
-    LarcenyState { _lPath      :: [Text]
-                 , _lSubs      :: Substitutions s
-                 , _lLib       :: Library s
-                 , _lOverrides :: Overrides
-                 , _lLogger    :: (Text -> IO ())
-                 , _lMk        :: [Node] -> Template s
-                 , _lNodes     :: [Node]
-                 , _lAppState  :: s }
 
 infix  4 .=
 (.=) :: MonadState s m => ASetter s s a b -> b -> m ()
