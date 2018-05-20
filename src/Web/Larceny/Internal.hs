@@ -89,7 +89,7 @@ mk :: Overrides -> [Node] -> Template s
 mk o = f
   where f nodes =
           Template $ \pth m l ->
-                      let pc = LarcenyState pth m l o print f nodes in
+                      let pc = LarcenyState pth m l o print nodes in
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
@@ -213,10 +213,10 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (LarcenyState s) IO Text
 fillAttr eBlankText =
-  do (LarcenyState pth m l _ _ mko _ _) <- get
+  do (LarcenyState pth m l o _ _ _) <- get
      toProcessState $
        case eBlankText of
-         Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
+         Right hole -> unFill (fillIn hole m) mempty (pth, mk o []) l
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -227,20 +227,20 @@ processBlank :: Text ->
                 [Node] ->
                 ProcessT s
 processBlank tagName atr kids = do
-  (LarcenyState pth m l _ _ mko _ _) <- get
+  (LarcenyState pth m l o _ _ _) <- get
   filled <- fillAttrs atr
   sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
                     filled
-                    (pth, add m (mko kids)) l]
+                    (pth, add m (mk o kids)) l]
 
 processBind :: Attributes ->
                [Node] ->
                ProcessT s
 processBind atr kids = do
-  (LarcenyState pth m l _ _ mko nodes _) <- get
+  (LarcenyState pth m l o _ nodes _) <- get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mko kids) pth m l)]
+                                       runTemplate (mk o kids) pth m l)]
   pcSubs .= newSubs `M.union` m
   process nodes
 
@@ -252,10 +252,10 @@ processApply :: Attributes ->
                 [Node] ->
                 ProcessT s
 processApply atr kids = do
-  (LarcenyState pth m l _ _ mko _ _) <- get
+  (LarcenyState pth m l o _ _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
-  contentTpl <- toProcessState $ runTemplate (mko kids) pth m l
+  contentTpl <- toProcessState $ runTemplate (mk o kids) pth m l
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
   sequence [ toProcessState $ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]

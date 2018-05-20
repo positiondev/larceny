@@ -45,7 +45,6 @@ data LarcenyState s =
                , _lLib       :: Library s
                , _lOverrides :: Overrides
                , _lLogger    :: (Text -> IO ())
-               , _lMk        :: [Node] -> Template s
                , _lNodes     :: [Node]
                , _lAppState  :: s }
 
