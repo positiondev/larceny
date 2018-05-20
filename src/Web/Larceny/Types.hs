@@ -45,7 +45,6 @@ data LarcenyState s =
                , _lLib       :: Library s
                , _lOverrides :: Overrides
                , _lLogger    :: (Text -> IO ())
-               , _lNodes     :: [Node]
                , _lAppState  :: s }
 
 -- | Corresponds to a "blank" in the template that can be filled in

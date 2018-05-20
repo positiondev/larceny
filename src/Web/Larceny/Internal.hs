@@ -89,7 +89,7 @@ mk :: Overrides -> [Node] -> Template s
 mk o = f
   where f nodes =
           Template $ \pth m l ->
-                      let pc = LarcenyState pth m l o print nodes in
+                      let pc = LarcenyState pth m l o print in
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
@@ -124,13 +124,8 @@ l .= b = modify (l .~ b)
 pcSubs :: Lens' (LarcenyState s) (Substitutions s)
 pcSubs = lens _lSubs (\pc s -> pc { _lSubs = s })
 
-pcNodes :: Lens' (LarcenyState s) [Node]
-pcNodes  = lens _lNodes (\pc n -> pc { _lNodes = n })
-
 pcState :: Lens' (LarcenyState s) s
 pcState = lens _lAppState (\pc s -> pc { _lAppState = s })
-
---type ProcessT s = StateT (LarcenyState s) IO [Text]
 
 type ProcessT s = StateT (LarcenyState s) IO [Text]
 
@@ -141,10 +136,8 @@ add mouter tpl =
 process :: [Node] -> ProcessT s
 process [] = return []
 process (NodeElement (BindElement atr kids):nextNodes) = do
-  pcNodes .= nextNodes
-  processBind atr kids
+  processBind atr kids nextNodes
 process (currentNode:nextNodes) = do
-  pcNodes .= nextNodes
   processedNode <-
     case currentNode of
       NodeElement DoctypeElement  -> return ["<!DOCTYPE html>"]
@@ -213,7 +206,7 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (LarcenyState s) IO Text
 fillAttr eBlankText =
-  do (LarcenyState pth m l o _ _ _) <- get
+  do (LarcenyState pth m l o _ _) <- get
      toProcessState $
        case eBlankText of
          Right hole -> unFill (fillIn hole m) mempty (pth, mk o []) l
@@ -227,7 +220,7 @@ processBlank :: Text ->
                 [Node] ->
                 ProcessT s
 processBlank tagName atr kids = do
-  (LarcenyState pth m l o _ _ _) <- get
+  (LarcenyState pth m l o _ _) <- get
   filled <- fillAttrs atr
   sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
                     filled
@@ -235,14 +228,15 @@ processBlank tagName atr kids = do
 
 processBind :: Attributes ->
                [Node] ->
+               [Node] ->
                ProcessT s
-processBind atr kids = do
-  (LarcenyState pth m l o _ nodes _) <- get
+processBind atr kids nextNodes = do
+  (LarcenyState pth m l o _ _) <- get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mk o kids) pth m l)]
   pcSubs .= newSubs `M.union` m
-  process nodes
+  process nextNodes
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
@@ -252,7 +246,7 @@ processApply :: Attributes ->
                 [Node] ->
                 ProcessT s
 processApply atr kids = do
-  (LarcenyState pth m l o _ _ _) <- get
+  (LarcenyState pth m l o _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- toProcessState $ runTemplate (mk o kids) pth m l
