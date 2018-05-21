@@ -29,6 +29,16 @@ import           Web.Larceny.Svg     (svgNodes)
 --     whether the node is a regular HTML node, a special Larceny element, or a
 --     Larceny blank. 3. Render each node into Text according to its node type.
 
+data Node = NodeElement Element
+          | NodeContent Text
+          | NodeComment Text
+
+data Element = PlainElement Name Attributes [Node]
+             | ApplyElement Attributes [Node]
+             | BindElement Attributes [Node]
+             | BlankElement Name Attributes [Node]
+             | DoctypeElement
+
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
 parse = parseWithOverrides defaultOverrides
@@ -126,8 +136,6 @@ pcSubs = lens _lSubs (\pc s -> pc { _lSubs = s })
 
 pcState :: Lens' (LarcenyState s) s
 pcState = lens _lAppState (\pc s -> pc { _lAppState = s })
-
-type LarcenyM s a = StateT (LarcenyState s) IO a
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =

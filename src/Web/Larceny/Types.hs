@@ -16,8 +16,7 @@ module Web.Larceny.Types ( Blank(..)
                          , AttrError(..)
                          , ApplyError(..)
                          , LarcenyState(..)
-                         , Node(..)
-                         , Element(..)) where
+                         , LarcenyM) where
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
@@ -29,15 +28,7 @@ import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Text.Read           (readMaybe)
 
-data Node = NodeElement Element
-          | NodeContent Text
-          | NodeComment Text
-
-data Element = PlainElement Name Attributes [Node]
-             | ApplyElement Attributes [Node]
-             | BindElement Attributes [Node]
-             | BlankElement Name Attributes [Node]
-             | DoctypeElement
+type LarcenyM s a = StateT (LarcenyState s) IO a
 
 data LarcenyState s =
   LarcenyState { _lPath      :: [Text]
