@@ -93,14 +93,14 @@ mk o = f
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
-toProcessState :: StateT s IO a -> StateT (LarcenyState s) IO a
+toProcessState :: StateT s IO a -> LarcenyM s a
 toProcessState f =
   do pc <- get
      (result, s') <- liftIO $ runStateT f (_lAppState pc)
      pcState .= s'
      return result
 
-toUserState :: LarcenyState s -> StateT (LarcenyState s) IO a -> StateT s IO a
+toUserState :: LarcenyState s -> LarcenyM s a -> StateT s IO a
 toUserState pc f =
   do s <- get
      liftIO $ evalStateT f (pc { _lAppState = s })
@@ -127,13 +127,13 @@ pcSubs = lens _lSubs (\pc s -> pc { _lSubs = s })
 pcState :: Lens' (LarcenyState s) s
 pcState = lens _lAppState (\pc s -> pc { _lAppState = s })
 
-type ProcessT s = StateT (LarcenyState s) IO [Text]
+type LarcenyM s a = StateT (LarcenyState s) IO a
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
   Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
 
-process :: [Node] -> ProcessT s
+process :: [Node] -> LarcenyM s [Text]
 process [] = return []
 process (NodeElement (BindElement atr kids):nextNodes) = do
   processBind atr kids nextNodes
@@ -161,7 +161,7 @@ process (currentNode:nextNodes) = do
 processPlain :: Name ->
                 Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processPlain tagName atr kids = do
   pc <- get
   atrs <- attrsToText atr
@@ -185,7 +185,7 @@ tagToText overrides (Name mPf name) atrs processed =
            ++ processed
            ++ ["</" <> prefix <> name <> ">"]
 
-attrsToText :: Attributes -> StateT (LarcenyState s) IO Text
+attrsToText :: Attributes -> LarcenyM s Text
 attrsToText attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
@@ -196,7 +196,7 @@ attrsToText attrs =
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
-fillAttrs :: Attributes -> StateT (LarcenyState s) IO Attributes
+fillAttrs :: Attributes -> LarcenyM s Attributes
 fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
@@ -204,7 +204,7 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
           vals <- T.concat <$> mapM fillAttr unboundValues
           return (keys, vals)
 
-fillAttr :: Either Text Blank -> StateT (LarcenyState s) IO Text
+fillAttr :: Either Text Blank -> LarcenyM s Text
 fillAttr eBlankText =
   do (LarcenyState pth m l o _ _) <- get
      toProcessState $
@@ -218,7 +218,7 @@ fillAttr eBlankText =
 processBlank :: Text ->
                 Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processBlank tagName atr kids = do
   (LarcenyState pth m l o _ _) <- get
   filled <- fillAttrs atr
@@ -229,7 +229,7 @@ processBlank tagName atr kids = do
 processBind :: Attributes ->
                [Node] ->
                [Node] ->
-               ProcessT s
+               LarcenyM s [Text]
 processBind atr kids nextNodes = do
   (LarcenyState pth m l o _ _) <- get
   let tagName = atr M.! "tag"
@@ -244,7 +244,7 @@ processBind atr kids nextNodes = do
 -- combined with outer substitution and the library.
 processApply :: Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processApply atr kids = do
   (LarcenyState pth m l o _ _) <- get
   filledAttrs <- fillAttrs atr
