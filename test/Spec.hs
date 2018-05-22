@@ -287,7 +287,7 @@ spec = hspec $ do
          \</apply>" `shouldRenderM` "Fill this in Fill this in"
 
       it "should not let binds escape the apply-content tag" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "not found!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ -> error "not found!")
         let lib = M.fromList [(["blah"], parse "<apply-content /><foo />")]
         hLarcenyState.lLib .= lib
         "<apply template=\"blah\"> \
@@ -315,7 +315,7 @@ spec = hspec $ do
       it "should allow you to write functions for fills" $ do
         let subs' =
               subs [("desc",
-                     Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
+                     Fill $ \m _t-> return $ T.take (read $ T.unpack (m M.! "length"))
                                         "A really long description"
                                         <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -324,8 +324,8 @@ spec = hspec $ do
       it "should allow you to use IO in fills" $ do
         let subs' =
               subs [("desc", Fill $
-                          \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
-                                         return $ T.take (read $ T.unpack (m M.! "length"))
+                          \m _t -> do liftIO $ putStrLn "***********\nHello World\n***********"
+                                      return $ T.take (read $ T.unpack (m M.! "length"))
                                            "A really long description"
                                            <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -373,7 +373,10 @@ spec = hspec $ do
            `shouldRenderM` "<p class=\"lots of space\"></p>"
 
       it "should know what the template path is" $ do
-        let fill = Fill $ \_ (p, _) _ -> return (head p)
+        let fill = Fill $ \_ _ -> do
+                    st <- get
+                    let p = _lPath st
+                    return (head p)
         hLarcenyState.lSubs .= subs [("template", fill)]
         "<p class=\"${template}\"></p>"
           `shouldRenderM` "<p class=\"default\"></p>"
@@ -442,7 +445,7 @@ statefulTests :: SpecWith (LarcenyHspecState Int)
 statefulTests =
   let incrementSub =
         subs [("increment-and-print",
-          Fill $ \_ _ _ ->
+          Fill $ \_ _ ->
             do -- eek refactor later
               s <- get
               lAppState .= (_lAppState s + 1 :: Int)
@@ -605,7 +608,7 @@ fallbackTests = do
       hLarcenyState.lSubs .= fallbackSub (rawTextFill "I'm a fallback.")
       "<p>missing: <missing /></p>" `shouldRenderM` "<p>missing: I'm a fallback.</p>"
     it "should allow errors to be thrown, e.g., in dev mode" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "missing blank!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ -> error "missing blank!")
         "<p>missing: <missing /></p>" `shouldErrorM` (== ErrorCall "missing blank!")
 
 attrTests :: SpecWith (LarcenyHspecState ())
@@ -629,7 +632,7 @@ attrTests =
       it "should allow you use child elements" $ do
         let descTplFill =
               useAttrs (a"length")
-                       (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
+                       (\n -> Fill $ \_attrs tpl -> liftIO $ do
                            let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
                            t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
                            return $ T.take n t' <> "...")
@@ -670,7 +673,7 @@ attrTests =
         descFunc :: Int -> Maybe Text -> Fill ()
         descFunc n e = Fill $
           do let ending = fromMaybe "..."  e
-             \_attrs (_pth, tpl) _l -> liftIO $ do
+             \_attrs tpl -> liftIO $ do
                let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
                renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
                return $ T.take n renderedText <> ending

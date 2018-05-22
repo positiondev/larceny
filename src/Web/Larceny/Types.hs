@@ -57,6 +57,9 @@ lSubs = lens _lSubs (\l s -> l { _lSubs = s })
 lPath :: Lens' (LarcenyState s) Path
 lPath = lens _lPath (\l s -> l { _lPath = s })
 
+lLib :: Lens' (LarcenyState s) (Library s)
+lLib = lens _lLib (\l s -> l { _lLib = s })
+
 lState :: Lens' (LarcenyState s) s
 lState = lens _lAppState (\l s -> l { _lAppState = s })
 
@@ -110,8 +113,7 @@ instance Hashable Blank where
 -- looking something up in a database) or store state (perhaps keeping
 -- track of what's already been rendered).
 newtype Fill s = Fill { unFill :: Attributes
-                               -> (Path, Template s)
-                               -> Library s
+                               -> Template s
                                -> LarcenyM s Text }
 
 -- | The Blank's attributes, a map from the attribute name to

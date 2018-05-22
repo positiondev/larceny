@@ -64,7 +64,7 @@ subst = subs [ ("site-title", textFill "Gotham Girls roster")
 
 modifyInnerText :: (Text -> Text) -> Fill ()
 modifyInnerText f = Fill $
-  \_attrs (_pth, tpl) _l ->
+  \_attrs tpl ->
     liftIO $ do
       let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
       t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState

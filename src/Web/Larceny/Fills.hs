@@ -17,7 +17,7 @@ module Web.Larceny.Fills ( textFill
                          , (%)) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT)
+import           Control.Monad.State (StateT, get)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
@@ -100,7 +100,7 @@ rawTextFill t = rawTextFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_m _t _l -> HE.text <$> toLarcenyState t
+textFill' t = Fill $ \_a _t -> HE.text <$> toLarcenyState t
 
 -- | Use state or IO, then fill in some text.
 --
@@ -109,7 +109,7 @@ textFill' t = Fill $ \_m _t _l -> HE.text <$> toLarcenyState t
 -- textFill' getTextFromDatabase
 -- @
 rawTextFill' :: StateT s IO Text -> Fill s
-rawTextFill' t = Fill $ \_m _t _l -> toLarcenyState t
+rawTextFill' t = Fill $ \_a _t -> toLarcenyState t
 
 -- | Create substitutions for each element in a list and fill the child nodes
 -- with those substitutions.
@@ -124,14 +124,20 @@ rawTextFill' t = Fill $ \_m _t _l -> toLarcenyState t
 mapSubs :: (a -> Substitutions s)
         -> [a]
         -> Fill s
-mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
+mapSubs f xs = Fill $ \_attrs tpl -> do
+    s <- get
+    let pth = _lPath s
+    let lib = _lLib s
     T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
 
 -- | Create substitutions for each element in a list (using IO/state if
 -- needed) and fill the child nodes with those substitutions.
 mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
 mapSubs' f xs = Fill $
-  \_m (pth, tpl) lib ->
+  \_m tpl -> do
+    s <- get
+    let pth = _lPath s
+    let lib = _lLib s
     T.concat <$>  mapM (\x -> do
                            s' <- toLarcenyState $ f x
                            runTemplate tpl pth s' lib) xs
@@ -182,8 +188,11 @@ fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
 -- > Bonnie Thunders
 maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
 maybeFillChildrenWith Nothing = textFill ""
-maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
-  tpl pth s l
+maybeFillChildrenWith (Just s) = Fill $ \_attrs tpl -> do
+  st <- get
+  let pth = _lPath st
+  let lib = _lLib st
+  runTemplate tpl pth s lib
 
 -- | Use state and IO and maybe fill in with some substitutions.
 --
@@ -198,11 +207,15 @@ maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
 --
 -- > Bonnie Thunders
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
-maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
+maybeFillChildrenWith' sMSubs = Fill $ \_s (Template tpl) -> do
   mSubs <- toLarcenyState sMSubs
   case mSubs of
     Nothing -> return ""
-    Just s  -> tpl pth s l
+    Just s  -> do
+      st <- get
+      let pth = _lPath st
+      let lib = _lLib st
+      tpl pth s lib
 
 -- | Use attributes from the the blank as arguments to the fill.
 --
@@ -223,8 +236,8 @@ maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
 useAttrs :: (Attributes -> k -> Fill s)
          ->  k
          ->  Fill s
-useAttrs k fill= Fill $ \atrs (pth, tpl) lib ->
-  unFill (k atrs fill) atrs (pth, tpl) lib
+useAttrs k fill= Fill $ \atrs tpl ->
+  unFill (k atrs fill) atrs tpl
 
 -- | Prepend `a` to the name of an attribute to pass the value of that
 -- attribute to the fill.

@@ -111,9 +111,11 @@ fallbackFill :: Blank -> Substitutions s -> Fill s
 fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
 fallbackFill (Blank tn) m =
   let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
-  Fill $ \attr (pth, tpl) lib ->
-    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
-       unFill fallback attr (pth, tpl) lib
+  Fill $ \attr tpl ->
+    do st <- get
+       let pth = _lPath st
+       liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+       unFill fallback attr tpl
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
@@ -194,7 +196,7 @@ fillAttr :: Either Text Blank -> LarcenyM s Text
 fillAttr eBlankText =
   do (LarcenyState pth m l o _ _) <- get
      case eBlankText of
-         Right hole -> unFill (fillIn hole m) mempty (pth, mk []) l
+         Right hole -> unFill (fillIn hole m) mempty (mk [])
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -209,7 +211,7 @@ processBlank tagName atr kids = do
   filled <- fillAttrs atr
   sequence [ unFill (fillIn (Blank tagName) m)
                     filled
-                    (pth, add m (mk kids)) l]
+                    (add m (mk kids))]
 
 processBind :: Attributes ->
                [Node] ->
@@ -218,8 +220,8 @@ processBind :: Attributes ->
 processBind atr kids nextNodes = do
   (LarcenyState pth m l o _ _) <- get
   let tagName = atr M.! "tag"
-      newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mk kids) pth m l)]
+      newSubs = subs [(tagName, Fill $ \_a _t ->do
+                                  runTemplate (mk kids) pth m l)]
   lSubs .= newSubs `M.union` m
   process nextNodes
 
