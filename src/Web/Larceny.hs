@@ -133,7 +133,7 @@ renderRelative l sub s givenPath targetPath =
   case findTemplate l givenPath targetPath of
     (pth, Just (Template run)) ->
       let larcenyState = LarcenyState pth sub l defaultOverrides print s in
-        Just <$> evalStateT (run pth sub l) larcenyState
+        Just <$> evalStateT (run sub) larcenyState
     (_, Nothing) -> return Nothing
 
 -- | Load all the templates in some directory into a Library.

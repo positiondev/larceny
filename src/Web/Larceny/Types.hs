@@ -160,9 +160,7 @@ fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 -- Use `loadTemplates` to load the templates from some directory
 -- into a template library. Use the `render` functions to render
 -- templates from a Library by path.
-newtype Template s = Template { runTemplate :: Path
-                                            -> Substitutions s
-                                            -> Library s
+newtype Template s = Template { runTemplate :: Substitutions s
                                             -> LarcenyM s Text }
 
 -- | The path to a template.

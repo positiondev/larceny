@@ -99,9 +99,9 @@ toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 mk :: [Node] -> Template s
 mk = f
   where f nodes =
-          Template $ \pth m _l ->
+          Template $ \m ->
                       do lSubs .= m
-                         lPath .= pth
+                         -- lPath .= pth
                          T.concat <$> process nodes
 
 fillIn :: Blank -> Substitutions s -> Fill s
@@ -119,7 +119,7 @@ fallbackFill (Blank tn) m =
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
-  Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
+  Template (\minner -> runTemplate tpl (minner `M.union` mouter))
 
 process :: [Node] -> LarcenyM s [Text]
 process [] = return []
@@ -221,7 +221,7 @@ processBind atr kids nextNodes = do
   (LarcenyState pth m l o _ _) <- get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t ->do
-                                  runTemplate (mk kids) pth m l)]
+                                  runTemplate (mk kids) m)]
   lSubs .= newSubs `M.union` m
   process nextNodes
 
@@ -236,10 +236,11 @@ processApply atr kids = do
   (LarcenyState pth m l o _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
-  contentTpl <- runTemplate (mk kids) pth m l
+  contentTpl <- runTemplate (mk kids) m
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
-  sequence [ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+  lPath .= absolutePath
+  sequence [ runTemplate tplToApply (contentSub `M.union` m) ]
 
 findTemplateFromAttrs :: Path ->
                          Library s ->

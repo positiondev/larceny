@@ -125,22 +125,16 @@ mapSubs :: (a -> Substitutions s)
         -> [a]
         -> Fill s
 mapSubs f xs = Fill $ \_attrs tpl -> do
-    s <- get
-    let pth = _lPath s
-    let lib = _lLib s
-    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
+    T.concat <$>  mapM (\n -> runTemplate tpl (f n)) xs
 
 -- | Create substitutions for each element in a list (using IO/state if
 -- needed) and fill the child nodes with those substitutions.
 mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
 mapSubs' f xs = Fill $
   \_m tpl -> do
-    s <- get
-    let pth = _lPath s
-    let lib = _lLib s
     T.concat <$>  mapM (\x -> do
                            s' <- toLarcenyState $ f x
-                           runTemplate tpl pth s' lib) xs
+                           runTemplate tpl s') xs
 
 -- | Fill in the child nodes of the blank with substitutions already
 -- available.
@@ -189,10 +183,7 @@ fillChildrenWith' m = maybeFillChildrenWith' (Just <$> m)
 maybeFillChildrenWith :: Maybe (Substitutions s) -> Fill s
 maybeFillChildrenWith Nothing = textFill ""
 maybeFillChildrenWith (Just s) = Fill $ \_attrs tpl -> do
-  st <- get
-  let pth = _lPath st
-  let lib = _lLib st
-  runTemplate tpl pth s lib
+  runTemplate tpl s
 
 -- | Use state and IO and maybe fill in with some substitutions.
 --
@@ -211,11 +202,7 @@ maybeFillChildrenWith' sMSubs = Fill $ \_s (Template tpl) -> do
   mSubs <- toLarcenyState sMSubs
   case mSubs of
     Nothing -> return ""
-    Just s  -> do
-      st <- get
-      let pth = _lPath st
-      let lib = _lLib st
-      tpl pth s lib
+    Just s  -> tpl s
 
 -- | Use attributes from the the blank as arguments to the fill.
 --

@@ -112,7 +112,7 @@ renderM :: Text -> LarcenyHspecM s Text
 renderM templateText = do
   (LarcenyHspecState _ ls@(LarcenyState p s l o _ st)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
-  liftIO $ evalStateT (runTemplate tpl p s l) ls
+  liftIO $ evalStateT (runTemplate tpl s) ls
 
 shouldRenderM :: Text -> Text -> LarcenyHspecM s ()
 shouldRenderM templateText output = do
@@ -634,7 +634,7 @@ attrTests =
               useAttrs (a"length")
                        (\n -> Fill $ \_attrs tpl -> liftIO $ do
                            let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
-                           t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
+                           t' <- evalStateT (runTemplate tpl mempty) larcenyState
                            return $ T.take n t' <> "...")
         hLarcenyState.lSubs .= subs [ ("adverb", textFill "really")
                                     , ("desc", descTplFill)]
@@ -675,7 +675,7 @@ attrTests =
           do let ending = fromMaybe "..."  e
              \_attrs tpl -> liftIO $ do
                let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
-               renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
+               renderedText <- evalStateT (runTemplate tpl mempty) larcenyState
                return $ T.take n renderedText <> ending
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}
