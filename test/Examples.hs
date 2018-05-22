@@ -66,7 +66,8 @@ modifyInnerText :: (Text -> Text) -> Fill ()
 modifyInnerText f = Fill $
   \_attrs (_pth, tpl) _l ->
     liftIO $ do
-      t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+      let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+      t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
       return $ f t'
 
 tplLib :: Library ()

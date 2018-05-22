@@ -32,14 +32,6 @@ infix  4 .=
 l .= b = modify (l .~ b)
 {-# INLINE (.=) #-}
 
-data LarcenyState s =
-  LarcenyState { _lPath      :: [Text]
-               , _lSubs      :: Substitutions s
-               , _lLib       :: Library s
-               , _lOverrides :: Overrides
-               , _lLogger    :: (Text -> IO ())
-               , _lAppState  :: s }
-
 lPath :: Lens' (LarcenyState s) [Text]
 lPath = lens _lPath (\ls p -> ls { _lPath = p })
 lSubs :: Lens' (LarcenyState s) (Substitutions s)
@@ -48,6 +40,8 @@ lLib :: Lens' (LarcenyState s) (Library s)
 lLib = lens _lLib (\ls l -> ls { _lLib = l })
 lOverrides :: Lens' (LarcenyState s) Overrides
 lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
+lAppState:: Lens' (LarcenyState s) s
+lAppState = lens _lAppState (\ls s -> ls { _lAppState = s })
 
 type LarcenyHspecM s = StateT (LarcenyHspecState s) IO
 
@@ -116,9 +110,9 @@ removeSpaces = T.replace " " ""
 
 renderM :: Text -> LarcenyHspecM s Text
 renderM templateText = do
-  (LarcenyHspecState _ (LarcenyState p s l o _ st)) <- S.get
+  (LarcenyHspecState _ ls@(LarcenyState p s l o _ st)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
-  liftIO $ evalStateT (runTemplate tpl p s l) st
+  liftIO $ evalStateT (runTemplate tpl p s l) ls
 
 shouldRenderM :: Text -> Text -> LarcenyHspecM s ()
 shouldRenderM templateText output = do
@@ -446,14 +440,18 @@ namespaceTests =
 
 statefulTests :: SpecWith (LarcenyHspecState Int)
 statefulTests =
+  let incrementSub =
+        subs [("increment-and-print",
+          Fill $ \_ _ _ ->
+            do -- eek refactor later
+              s <- get
+              lAppState .= (_lAppState s + 1 :: Int)
+              s' <- get
+              let int = _lAppState s'
+              return (T.pack (show int)))] in
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
-        hLarcenyState.lSubs .=
-          subs [("increment-and-print",
-                 Fill $ \_ _ _ ->
-                   do modify ((+1) :: Int -> Int)
-                      s <- get
-                      return (T.pack (show s)))]
+        hLarcenyState.lSubs .= incrementSub
         "<increment-and-print /><increment-and-print />" `shouldRenderM` "12"
 
        {- The following test was prompted by a bug where I refuktored the
@@ -463,12 +461,7 @@ statefulTests =
           over and over again.
        -}
       it "should not be affected by binds" $ do
-        hLarcenyState.lSubs .=
-          subs [("increment-and-print",
-                 Fill $ \_ _ _ ->
-                   do modify ((+1) :: Int -> Int)
-                      s <- get
-                      return (T.pack (show s)))]
+        hLarcenyState.lSubs .= incrementSub
         "<bind tag=\"test1\">test1</bind>\
             \<bind tag=\"test2\">test2</bind>\
             \<increment-and-print /><increment-and-print />"
@@ -637,7 +630,8 @@ attrTests =
         let descTplFill =
               useAttrs (a"length")
                        (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
-                           t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+                           let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+                           t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
                            return $ T.take n t' <> "...")
         hLarcenyState.lSubs .= subs [ ("adverb", textFill "really")
                                     , ("desc", descTplFill)]
@@ -677,7 +671,8 @@ attrTests =
         descFunc n e = Fill $
           do let ending = fromMaybe "..."  e
              \_attrs (_pth, tpl) _l -> liftIO $ do
-               renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+               let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+               renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) larcenyState
                return $ T.take n renderedText <> ending
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

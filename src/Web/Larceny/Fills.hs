@@ -100,7 +100,7 @@ rawTextFill t = rawTextFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_m _t _l -> HE.text <$> t
+textFill' t = Fill $ \_m _t _l -> HE.text <$> toLarcenyState t
 
 -- | Use state or IO, then fill in some text.
 --
@@ -109,7 +109,7 @@ textFill' t = Fill $ \_m _t _l -> HE.text <$> t
 -- textFill' getTextFromDatabase
 -- @
 rawTextFill' :: StateT s IO Text -> Fill s
-rawTextFill' t = Fill $ \_m _t _l -> t
+rawTextFill' t = Fill $ \_m _t _l -> toLarcenyState t
 
 -- | Create substitutions for each element in a list and fill the child nodes
 -- with those substitutions.
@@ -133,7 +133,7 @@ mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
 mapSubs' f xs = Fill $
   \_m (pth, tpl) lib ->
     T.concat <$>  mapM (\x -> do
-                           s' <- f x
+                           s' <- toLarcenyState $ f x
                            runTemplate tpl pth s' lib) xs
 
 -- | Fill in the child nodes of the blank with substitutions already
@@ -199,7 +199,7 @@ maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
 -- > Bonnie Thunders
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
 maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
-  mSubs <- sMSubs
+  mSubs <- toLarcenyState sMSubs
   case mSubs of
     Nothing -> return ""
     Just s  -> tpl pth s l

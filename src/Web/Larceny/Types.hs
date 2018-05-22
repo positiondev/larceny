@@ -16,10 +16,17 @@ module Web.Larceny.Types ( Blank(..)
                          , AttrError(..)
                          , ApplyError(..)
                          , LarcenyState(..)
-                         , LarcenyM) where
+                         , LarcenyM
+                         , toLarcenyState
+                         , (.=)
+                         , lState
+                         , lSubs
+                         , lPath) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT)
+import           Control.Monad.State (StateT, evalStateT, get, runStateT, modify, MonadState)
+import Lens.Micro
+import           Control.Monad.Trans (liftIO)
 import           Data.Hashable       (Hashable, hash, hashWithSalt)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
@@ -37,6 +44,29 @@ data LarcenyState s =
                , _lOverrides :: Overrides
                , _lLogger    :: (Text -> IO ())
                , _lAppState  :: s }
+
+-- Temporary while transitioning to LarcenyM
+infix  4 .=
+(.=) :: MonadState s m => ASetter s s a b -> b -> m ()
+l .= b = modify (l .~ b)
+{-# INLINE (.=) #-}
+
+lSubs :: Lens' (LarcenyState s) (Substitutions s)
+lSubs = lens _lSubs (\l s -> l { _lSubs = s })
+
+lPath :: Lens' (LarcenyState s) Path
+lPath = lens _lPath (\l s -> l { _lPath = s })
+
+lState :: Lens' (LarcenyState s) s
+lState = lens _lAppState (\l s -> l { _lAppState = s })
+
+toLarcenyState :: StateT s IO a -> LarcenyM s a
+toLarcenyState f =
+  do l <- get
+     (result, s') <- liftIO $ runStateT f (_lAppState l)
+     lState .= s'
+     return result
+-- End temporary
 
 -- | Corresponds to a "blank" in the template that can be filled in
 -- with some value when the template is rendered.  Blanks can be tags
@@ -82,7 +112,7 @@ instance Hashable Blank where
 newtype Fill s = Fill { unFill :: Attributes
                                -> (Path, Template s)
                                -> Library s
-                               -> StateT s IO Text }
+                               -> LarcenyM s Text }
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
@@ -131,7 +161,7 @@ fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
                                             -> Library s
-                                            -> StateT s IO Text }
+                                            -> LarcenyM s Text }
 
 -- | The path to a template.
 type Path = [Text]
