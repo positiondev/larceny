@@ -23,6 +23,7 @@ library
                      , Web.Larceny.Internal
                      , Web.Larceny.Types
                      , Web.Larceny.Fills
+                     , Web.Larceny.Legacy
   other-extensions:    OverloadedStrings
   build-depends:       base >=4.8 && <5
                      , containers >=0.5 && <0.6
