@@ -19,10 +19,11 @@ module Web.Larceny.Types ( Blank(..)
                          , LarcenyM
                          , toLarcenyState
                          , (.=)
-                         , lState
                          , lSubs
                          , lPath
-                         , lLib) where
+                         , lLib
+                         , lOverrides
+                         , lAppState) where
 
 import           Control.Exception
 import           Control.Monad.State (StateT, get, runStateT, modify, MonadState)
@@ -54,21 +55,20 @@ l .= b = modify (l .~ b)
 
 lSubs :: Lens' (LarcenyState s) (Substitutions s)
 lSubs = lens _lSubs (\l s -> l { _lSubs = s })
-
 lPath :: Lens' (LarcenyState s) Path
 lPath = lens _lPath (\l s -> l { _lPath = s })
-
 lLib :: Lens' (LarcenyState s) (Library s)
 lLib = lens _lLib (\l s -> l { _lLib = s })
-
-lState :: Lens' (LarcenyState s) s
-lState = lens _lAppState (\l s -> l { _lAppState = s })
+lOverrides :: Lens' (LarcenyState s) Overrides
+lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
+lAppState:: Lens' (LarcenyState s) s
+lAppState = lens _lAppState (\ls s -> ls { _lAppState = s })
 
 toLarcenyState :: StateT s IO a -> LarcenyM s a
 toLarcenyState f =
   do l <- get
      (result, s') <- liftIO $ runStateT f (_lAppState l)
-     lState .= s'
+     lAppState .= s'
      return result
 -- End temporary
 

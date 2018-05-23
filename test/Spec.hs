@@ -1,17 +1,17 @@
+{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..))
-import           Lens.Micro
-import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
+import           Control.Exception       (ErrorCall (..), Exception, catch,
+                                          throw, try)
+import           Control.Monad.State     (StateT (..), evalStateT, get,
                                           runStateT)
 import qualified Control.Monad.State     as S
 import           Control.Monad.Trans     (liftIO)
@@ -23,25 +23,14 @@ import qualified Data.Text               as T
 import qualified Data.Text.Lazy          as LT
 import           Data.Typeable
 import           Examples
+import           Lens.Micro
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
+
+
 import           Web.Larceny
-
-infix  4 .=
-(.=) :: S.MonadState s m => ASetter s s a b -> b -> m ()
-l .= b = modify (l .~ b)
-{-# INLINE (.=) #-}
-
-lPath :: Lens' (LarcenyState s) [Text]
-lPath = lens _lPath (\ls p -> ls { _lPath = p })
-lSubs :: Lens' (LarcenyState s) (Substitutions s)
-lSubs = lens _lSubs (\ls s -> ls { _lSubs = s })
-lLib :: Lens' (LarcenyState s) (Library s)
-lLib = lens _lLib (\ls l -> ls { _lLib = l })
-lOverrides :: Lens' (LarcenyState s) Overrides
-lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
-lAppState:: Lens' (LarcenyState s) s
-lAppState = lens _lAppState (\ls s -> ls { _lAppState = s })
+import           Web.Larceny.Types       (lAppState, lLib, lOverrides, lPath,
+                                          lSubs, (.=))
 
 type LarcenyHspecM s = StateT (LarcenyHspecState s) IO
 
