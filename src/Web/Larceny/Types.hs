@@ -21,10 +21,11 @@ module Web.Larceny.Types ( Blank(..)
                          , (.=)
                          , lState
                          , lSubs
-                         , lPath) where
+                         , lPath
+                         , lLib) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT, evalStateT, get, runStateT, modify, MonadState)
+import           Control.Monad.State (StateT, get, runStateT, modify, MonadState)
 import Lens.Micro
 import           Control.Monad.Trans (liftIO)
 import           Data.Hashable       (Hashable, hash, hashWithSalt)

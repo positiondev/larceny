@@ -110,7 +110,7 @@ removeSpaces = T.replace " " ""
 
 renderM :: Text -> LarcenyHspecM s Text
 renderM templateText = do
-  (LarcenyHspecState _ ls@(LarcenyState p s l o _ st)) <- S.get
+  (LarcenyHspecState _ ls@(LarcenyState _ s _ o _ _)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
   liftIO $ evalStateT (runTemplate tpl s) ls
 

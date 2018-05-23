@@ -5,8 +5,7 @@ module Web.Larceny.Internal ( findTemplate
                             , parseWithOverrides) where
 
 import           Control.Exception
-import           Control.Monad.State (MonadState, StateT, evalStateT, get,
-                                      modify, put, runStateT)
+import           Control.Monad.State (get)
 import           Control.Monad.Trans (liftIO)
 import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
@@ -15,7 +14,6 @@ import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import qualified Data.Text.Lazy      as LT
-import           Lens.Micro
 import qualified Text.HTML.DOM       as D
 import qualified Text.XML            as X
 ------------
@@ -194,7 +192,7 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> LarcenyM s Text
 fillAttr eBlankText =
-  do (LarcenyState pth m l o _ _) <- get
+  do m <- _lSubs <$> get
      case eBlankText of
          Right hole -> unFill (fillIn hole m) mempty (mk [])
          Left text -> return text
@@ -207,7 +205,7 @@ processBlank :: Text ->
                 [Node] ->
                 LarcenyM s [Text]
 processBlank tagName atr kids = do
-  (LarcenyState pth m l o _ _) <- get
+  m <- _lSubs <$> get
   filled <- fillAttrs atr
   sequence [ unFill (fillIn (Blank tagName) m)
                     filled
@@ -218,7 +216,7 @@ processBind :: Attributes ->
                [Node] ->
                LarcenyM s [Text]
 processBind atr kids nextNodes = do
-  (LarcenyState pth m l o _ _) <- get
+  m <- _lSubs <$> get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t ->do
                                   runTemplate (mk kids) m)]
@@ -233,7 +231,7 @@ processApply :: Attributes ->
                 [Node] ->
                 LarcenyM s [Text]
 processApply atr kids = do
-  (LarcenyState pth m l o _ _) <- get
+  (LarcenyState pth m l _ _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- runTemplate (mk kids) m

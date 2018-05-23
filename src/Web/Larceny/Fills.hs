@@ -17,7 +17,7 @@ module Web.Larceny.Fills ( textFill
                          , (%)) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT, get)
+import           Control.Monad.State (StateT)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
