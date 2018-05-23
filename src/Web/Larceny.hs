@@ -81,7 +81,8 @@ module Web.Larceny ( Blank(..)
                    , a
                    , (%)
                    , parse
-                   , parseWithOverrides) where
+                   , parseWithOverrides
+                   , LarcenyState(..)) where
 
 import           Control.Monad        (filterM)
 import           Control.Monad.State  (evalStateT)
@@ -130,7 +131,9 @@ renderWith l sub s = renderRelative l sub s []
 renderRelative :: Library s -> Substitutions s -> s -> Path -> Path -> IO (Maybe Text)
 renderRelative l sub s givenPath targetPath =
   case findTemplate l givenPath targetPath of
-    (pth, Just (Template run)) -> Just <$> evalStateT (run pth sub l) s
+    (pth, Just (Template run)) ->
+      let larcenyState = LarcenyState pth sub l defaultOverrides print s in
+        Just <$> evalStateT (run sub) larcenyState
     (_, Nothing) -> return Nothing
 
 -- | Load all the templates in some directory into a Library.

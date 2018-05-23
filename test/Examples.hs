@@ -64,9 +64,10 @@ subst = subs [ ("site-title", textFill "Gotham Girls roster")
 
 modifyInnerText :: (Text -> Text) -> Fill ()
 modifyInnerText f = Fill $
-  \_attrs (_pth, tpl) _l ->
+  \_attrs tpl ->
     liftIO $ do
-      t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+      let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+      t' <- evalStateT (runTemplate tpl mempty) larcenyState
       return $ f t'
 
 tplLib :: Library ()

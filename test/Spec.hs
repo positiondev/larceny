@@ -1,17 +1,17 @@
+{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE FlexibleContexts     #-}
 {-# LANGUAGE FlexibleInstances    #-}
 {-# LANGUAGE OverloadedStrings    #-}
 {-# LANGUAGE RankNTypes           #-}
 {-# LANGUAGE ScopedTypeVariables  #-}
 {-# LANGUAGE TypeFamilies         #-}
-{-# LANGUAGE BangPatterns         #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..))
-import           Lens.Micro
-import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
+import           Control.Exception       (ErrorCall (..), Exception, catch,
+                                          throw, try)
+import           Control.Monad.State     (StateT (..), evalStateT, get,
                                           runStateT)
 import qualified Control.Monad.State     as S
 import           Control.Monad.Trans     (liftIO)
@@ -23,43 +23,28 @@ import qualified Data.Text               as T
 import qualified Data.Text.Lazy          as LT
 import           Data.Typeable
 import           Examples
+import           Lens.Micro
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
+
+
 import           Web.Larceny
+import           Web.Larceny.Types       (lAppState, lLib, lOverrides, lPath,
+                                          lSubs, (.=))
 
-infix  4 .=
-(.=) :: S.MonadState s m => ASetter s s a b -> b -> m ()
-l .= b = modify (l .~ b)
-{-# INLINE (.=) #-}
+type LarcenyHspecM s = StateT (LarcenyHspecState s) IO
 
-data LarcenyState =
-  LarcenyState { _lPath      :: [Text]
-               , _lSubs      :: Substitutions ()
-               , _lLib       :: Library ()
-               , _lOverrides :: Overrides }
-
-lPath :: Lens' LarcenyState [Text]
-lPath = lens _lPath (\ls p -> ls { _lPath = p })
-lSubs :: Lens' LarcenyState (Substitutions ())
-lSubs = lens _lSubs (\ls s -> ls { _lSubs = s })
-lLib :: Lens' LarcenyState (Library ())
-lLib = lens _lLib (\ls l -> ls { _lLib = l })
-lOverrides :: Lens' LarcenyState Overrides
-lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
-
-type LarcenyHspecM = StateT LarcenyHspecState IO
-
-data LarcenyHspecState =
+data LarcenyHspecState s =
   LarcenyHspecState { _hResult       :: H.Result
-                    , _hLarcenyState :: LarcenyState }
+                    , _hLarcenyState :: LarcenyState s }
 
-hResult :: Lens' LarcenyHspecState H.Result
+hResult :: Lens' (LarcenyHspecState s) H.Result
 hResult = lens _hResult (\hs r -> hs { _hResult = r })
-hLarcenyState :: Lens' LarcenyHspecState LarcenyState
+hLarcenyState :: Lens' (LarcenyHspecState s) (LarcenyState s)
 hLarcenyState = lens _hLarcenyState (\hs ls -> hs { _hLarcenyState = ls })
 
-instance H.Example (LarcenyHspecM ()) where
-  type Arg (LarcenyHspecM ()) = LarcenyHspecState
+instance H.Example (LarcenyHspecM s ()) where
+  type Arg (LarcenyHspecM a ()) = LarcenyHspecState a
   evaluateExample s _params actionWithToIO _progCallback =
     do mv <- newEmptyMVar
        actionWithToIO $ \st ->
@@ -70,15 +55,16 @@ instance H.Example (LarcenyHspecM ()) where
             putMVar mv r
        takeMVar mv
 
-withLarceny :: SpecWith LarcenyHspecState
+withLarceny :: s
+            -> SpecWith (LarcenyHspecState s)
             -> Spec
-withLarceny spec' =
+withLarceny s spec' =
   let larcenyHspecState =
-        LarcenyHspecState H.Success (LarcenyState ["default"] mempty mempty mempty) in
+        LarcenyHspecState H.Success (LarcenyState ["default"] mempty mempty mempty print s) in
   afterAll return $
     before (return larcenyHspecState) spec'
 
-setResult :: H.Result -> LarcenyHspecM ()
+setResult :: H.Result -> LarcenyHspecM s ()
 setResult r = case r of
                 H.Success -> hResult .= r
                 _ -> throw r
@@ -111,13 +97,13 @@ tpl4Output = "\
 removeSpaces :: Text -> Text
 removeSpaces = T.replace " " ""
 
-renderM :: Text -> LarcenyHspecM Text
+renderM :: Text -> LarcenyHspecM s Text
 renderM templateText = do
-  (LarcenyHspecState _ (LarcenyState p s l o)) <- S.get
+  (LarcenyHspecState _ ls@(LarcenyState _ s _ o _ _)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
-  liftIO $ evalStateT (runTemplate tpl p s l) ()
+  liftIO $ evalStateT (runTemplate tpl s) ls
 
-shouldRenderM :: Text -> Text -> LarcenyHspecM ()
+shouldRenderM :: Text -> Text -> LarcenyHspecM s ()
 shouldRenderM templateText output = do
   rendered <- renderM templateText
   if removeSpaces rendered == removeSpaces output
@@ -125,7 +111,7 @@ shouldRenderM templateText output = do
     else let msg = T.unpack $ rendered <> " doesn't match " <> output in
          setResult (H.Fail Nothing msg)
 
-shouldRenderContainingM :: Text -> Text -> LarcenyHspecM ()
+shouldRenderContainingM :: Text -> Text -> LarcenyHspecM s ()
 shouldRenderContainingM templateText excerpt = do
   rendered <- renderM templateText
   if excerpt `T.isInfixOf` rendered
@@ -133,7 +119,7 @@ shouldRenderContainingM templateText excerpt = do
   else let msg = T.unpack $ excerpt <> " not found in " <> templateText in
        setResult (H.Fail Nothing msg)
 
-shouldErrorM :: (Exception a, Eq a) => Text -> Selector a -> LarcenyHspecM ()
+shouldErrorM :: (Exception a, Eq a) => Text -> Selector a -> LarcenyHspecM s ()
 shouldErrorM templateText p =
    do hspecState <- S.get
       let renderAttempt = evalStateT (renderM templateText) hspecState
@@ -160,7 +146,7 @@ main = spec
 
 spec :: IO ()
 spec = hspec $ do
-  withLarceny $ do
+  withLarceny () $ do
     describe "parse" $ do
       it "should parse HTML into a Template" $ do
         hLarcenyState.lSubs .= subst
@@ -290,7 +276,7 @@ spec = hspec $ do
          \</apply>" `shouldRenderM` "Fill this in Fill this in"
 
       it "should not let binds escape the apply-content tag" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "not found!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ -> error "not found!")
         let lib = M.fromList [(["blah"], parse "<apply-content /><foo />")]
         hLarcenyState.lLib .= lib
         "<apply template=\"blah\"> \
@@ -318,7 +304,7 @@ spec = hspec $ do
       it "should allow you to write functions for fills" $ do
         let subs' =
               subs [("desc",
-                     Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
+                     Fill $ \m _t-> return $ T.take (read $ T.unpack (m M.! "length"))
                                         "A really long description"
                                         <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -327,8 +313,8 @@ spec = hspec $ do
       it "should allow you to use IO in fills" $ do
         let subs' =
               subs [("desc", Fill $
-                          \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
-                                         return $ T.take (read $ T.unpack (m M.! "length"))
+                          \m _t -> do liftIO $ putStrLn "***********\nHello World\n***********"
+                                      return $ T.take (read $ T.unpack (m M.! "length"))
                                            "A really long description"
                                            <> "...")]
         hLarcenyState.lSubs .= subs'
@@ -376,7 +362,10 @@ spec = hspec $ do
            `shouldRenderM` "<p class=\"lots of space\"></p>"
 
       it "should know what the template path is" $ do
-        let fill = Fill $ \_ (p, _) _ -> return (head p)
+        let fill = Fill $ \_ _ -> do
+                    st <- get
+                    let p = _lPath st
+                    return (head p)
         hLarcenyState.lSubs .= subs [("template", fill)]
         "<p class=\"${template}\"></p>"
           `shouldRenderM` "<p class=\"default\"></p>"
@@ -420,9 +409,9 @@ spec = hspec $ do
     doctypeTests
     conditionalTests
     namespaceTests
-  statefulTests
+  withLarceny 0 $ statefulTests
 
-namespaceTests :: SpecWith LarcenyHspecState
+namespaceTests :: SpecWith (LarcenyHspecState ())
 namespaceTests =
   describe "namespaces" $ do
     it "should assume that tags with namespaces are blanks" $ do
@@ -441,18 +430,22 @@ namespaceTests =
       "<svg:svg><path></path></svg>"
         `shouldRenderM` "<svg:svg><path></path></svg:svg>"
 
-statefulTests :: SpecWith ()
+statefulTests :: SpecWith (LarcenyHspecState Int)
 statefulTests =
+  let incrementSub =
+        subs [("increment-and-print",
+          Fill $ \_ _ ->
+            do -- eek refactor later
+              s <- get
+              lAppState .= (_lAppState s + 1 :: Int)
+              s' <- get
+              let int = _lAppState s'
+              return (T.pack (show int)))] in
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
-         renderWith (M.fromList [(["default"], parse "<x/><x/>")])
-                    (subs [("x", Fill $ \_ _ _ ->
-                                   do modify ((+1) :: Int -> Int)
-                                      s <- get
-                                      return (T.pack (show s)))])
-                    0
-                    ["default"]
-         `shouldReturn` Just "12"
+        hLarcenyState.lSubs .= incrementSub
+        "<increment-and-print /><increment-and-print />" `shouldRenderM` "12"
+
        {- The following test was prompted by a bug where I refuktored the
           bind tag handling to be inside the case statement in `process`.
           The bind tag processor itself calls bind but doesn't return any
@@ -460,19 +453,13 @@ statefulTests =
           over and over again.
        -}
       it "should not be affected by binds" $ do
-       let tpl = "<bind tag=\"test1\">test1</bind>\
-                 \<bind tag=\"test2\">test2</bind>\
-                 \<x/><x/>"
-       renderWith (M.fromList [(["default"], parse tpl)])
-                    (subs [("x", Fill $ \_ _ _ ->
-                                   do modify ((+1) :: Int -> Int)
-                                      s <- get
-                                      return (T.pack (show s)))])
-                    0
-                    ["default"]
-         `shouldReturn` Just "12"
+        hLarcenyState.lSubs .= incrementSub
+        "<bind tag=\"test1\">test1</bind>\
+            \<bind tag=\"test2\">test2</bind>\
+            \<increment-and-print /><increment-and-print />"
+          `shouldRenderM` "12"
 
-doctypeTests :: SpecWith LarcenyHspecState
+doctypeTests :: SpecWith (LarcenyHspecState ())
 doctypeTests = do
   describe "doctypes" $ do
     it "should render blank doctypes" $ do
@@ -483,7 +470,7 @@ doctypeTests = do
       "<!DOCTYPE html><html><p>Hello world</p></html>"
       `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
 
-conditionalTests :: SpecWith LarcenyHspecState
+conditionalTests :: SpecWith (LarcenyHspecState ())
 conditionalTests = do
   describe "conditionals" $ do
     let template cond =
@@ -598,7 +585,7 @@ conditionalTests = do
         template `shouldRenderM` "It is empty!"
 
 
-fallbackTests ::SpecWith LarcenyHspecState
+fallbackTests ::SpecWith (LarcenyHspecState ())
 fallbackTests = do
   describe "templates with missing blanks" $ do
     it "should render empty text by default" $ do
@@ -610,10 +597,10 @@ fallbackTests = do
       hLarcenyState.lSubs .= fallbackSub (rawTextFill "I'm a fallback.")
       "<p>missing: <missing /></p>" `shouldRenderM` "<p>missing: I'm a fallback.</p>"
     it "should allow errors to be thrown, e.g., in dev mode" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "missing blank!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ -> error "missing blank!")
         "<p>missing: <missing /></p>" `shouldErrorM` (== ErrorCall "missing blank!")
 
-attrTests :: SpecWith LarcenyHspecState
+attrTests :: SpecWith (LarcenyHspecState ())
 attrTests =
   describe "useAttrs" $ do
       it "should allow you to *easily* write functions for fills" $ do
@@ -634,8 +621,9 @@ attrTests =
       it "should allow you use child elements" $ do
         let descTplFill =
               useAttrs (a"length")
-                       (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
-                           t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+                       (\n -> Fill $ \_attrs tpl -> liftIO $ do
+                           let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+                           t' <- evalStateT (runTemplate tpl mempty) larcenyState
                            return $ T.take n t' <> "...")
         hLarcenyState.lSubs .= subs [ ("adverb", textFill "really")
                                     , ("desc", descTplFill)]
@@ -674,8 +662,9 @@ attrTests =
         descFunc :: Int -> Maybe Text -> Fill ()
         descFunc n e = Fill $
           do let ending = fromMaybe "..."  e
-             \_attrs (_pth, tpl) _l -> liftIO $ do
-               renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
+             \_attrs tpl -> liftIO $ do
+               let larcenyState = LarcenyState ["default"] mempty mempty defaultOverrides print ()
+               renderedText <- evalStateT (runTemplate tpl mempty) larcenyState
                return $ T.take n renderedText <> ending
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

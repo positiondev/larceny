@@ -1,13 +1,12 @@
-{-# LANGUAGE OverloadedStrings          #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Web.Larceny.Internal ( findTemplate
                             , parse
                             , parseWithOverrides) where
 
 import           Control.Exception
-import           Lens.Micro
+import           Control.Monad.State (get)
 import           Control.Monad.Trans (liftIO)
-import           Control.Monad.State (MonadState, StateT, evalStateT, runStateT, get, modify)
 import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
@@ -18,10 +17,26 @@ import qualified Data.Text.Lazy      as LT
 import qualified Text.HTML.DOM       as D
 import qualified Text.XML            as X
 ------------
-import           Web.Larceny.Types
 import           Web.Larceny.Fills
 import           Web.Larceny.Html    (html5Nodes, html5SelfClosingNodes)
 import           Web.Larceny.Svg     (svgNodes)
+import           Web.Larceny.Types
+
+-- | Phases of the template parsing/rendering process: 1. Parse the document
+--     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
+--     which encodes more information about the elements, including prefix and
+--     whether the node is a regular HTML node, a special Larceny element, or a
+--     Larceny blank. 3. Render each node into Text according to its node type.
+
+data Node = NodeElement Element
+          | NodeContent Text
+          | NodeComment Text
+
+data Element = PlainElement Name Attributes [Node]
+             | ApplyElement Attributes [Node]
+             | BindElement Attributes [Node]
+             | BlankElement Name Attributes [Node]
+             | DoctypeElement
 
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
@@ -32,22 +47,8 @@ parseWithOverrides :: Overrides -> LT.Text -> Template s
 parseWithOverrides o t =
   let textWithoutDoctype = LT.replace "<!DOCTYPE html>" "<doctype />" t
       (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
-  in mk o $! map (toLarcenyNode o) nodes
+  in mk $! map (toLarcenyNode o) nodes
 
--- | Phases of the template parsing/rendering process: 1. Parse the document
---     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
---     which encodes more information about the elements, including prefix and
---     whether the node is a regular HTML node, a special Larceny element, or a
---     Larceny blank. 3. Render each node into Text according to its node type.
-data Node = NodeElement Element
-          | NodeContent Text
-          | NodeComment Text
-
-data Element = PlainElement Name Attributes [Node]
-             | ApplyElement Attributes [Node]
-             | BindElement Attributes [Node]
-             | BlankElement Name Attributes [Node]
-             | DoctypeElement
 
 toLarcenyName :: X.Name -> Name
 toLarcenyName (X.Name tn _ _) =
@@ -93,25 +94,13 @@ toLarcenyNode _ (X.NodeComment c) = NodeComment c
 toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 
 -- | Turn HTML nodes and overrides into templates.
-mk :: Overrides -> [Node] -> Template s
-mk o = f
+mk :: [Node] -> Template s
+mk = f
   where f nodes =
-          Template $ \pth m l ->
-                      let pc = ProcessContext pth m l o f nodes in
-                      do s <- get
-                         T.concat <$> toUserState (pc s) (process nodes)
-
-toProcessState :: StateT s IO a -> StateT (ProcessContext s) IO a
-toProcessState f =
-  do pc <- get
-     (result, s') <- liftIO $ runStateT f (_pcState pc)
-     pcState .= s'
-     return result
-
-toUserState :: ProcessContext s -> StateT (ProcessContext s) IO a -> StateT s IO a
-toUserState pc f =
-  do s <- get
-     liftIO $ evalStateT f (pc { _pcState = s })
+          Template $ \m ->
+                      do lSubs .= m
+                         -- lPath .= pth
+                         T.concat <$> process nodes
 
 fillIn :: Blank -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (fallbackFill tn m) (M.lookup tn m)
@@ -120,45 +109,21 @@ fallbackFill :: Blank -> Substitutions s -> Fill s
 fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
 fallbackFill (Blank tn) m =
   let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
-  Fill $ \attr (pth, tpl) lib ->
-    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
-       unFill fallback attr (pth, tpl) lib
-
-data ProcessContext s = ProcessContext { _pcPath          :: Path
-                                       , _pcSubs          :: Substitutions s
-                                       , _pcLib           :: Library s
-                                       , _pcOverrides     :: Overrides
-                                       , _pcMk            :: [Node] -> Template s
-                                       , _pcNodes         :: [Node]
-                                       , _pcState         :: s }
-
-infix  4 .=
-(.=) :: MonadState s m => ASetter s s a b -> b -> m ()
-l .= b = modify (l .~ b)
-{-# INLINE (.=) #-}
-
-pcSubs :: Lens' (ProcessContext s) (Substitutions s)
-pcSubs = lens _pcSubs (\pc s -> pc { _pcSubs = s })
-
-pcNodes :: Lens' (ProcessContext s) [Node]
-pcNodes  = lens _pcNodes (\pc n -> pc { _pcNodes = n })
-
-pcState :: Lens' (ProcessContext s) s
-pcState = lens _pcState (\pc s -> pc { _pcState = s })
-
-type ProcessT s = StateT (ProcessContext s) IO [Text]
+  Fill $ \attr tpl ->
+    do st <- get
+       let pth = _lPath st
+       liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+       unFill fallback attr tpl
 
 add :: Substitutions s -> Template s -> Template s
 add mouter tpl =
-  Template (\pth minner l -> runTemplate tpl pth (minner `M.union` mouter) l)
+  Template (\minner -> runTemplate tpl (minner `M.union` mouter))
 
-process :: [Node] -> ProcessT s
+process :: [Node] -> LarcenyM s [Text]
 process [] = return []
 process (NodeElement (BindElement atr kids):nextNodes) = do
-  pcNodes .= nextNodes
-  processBind atr kids
+  processBind atr kids nextNodes
 process (currentNode:nextNodes) = do
-  pcNodes .= nextNodes
   processedNode <-
     case currentNode of
       NodeElement DoctypeElement  -> return ["<!DOCTYPE html>"]
@@ -182,12 +147,12 @@ process (currentNode:nextNodes) = do
 processPlain :: Name ->
                 Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processPlain tagName atr kids = do
   pc <- get
   atrs <- attrsToText atr
   processed <- process kids
-  return $ tagToText (_pcOverrides pc) tagName atrs processed
+  return $ tagToText (_lOverrides pc) tagName atrs processed
 
 selfClosing :: Overrides -> HS.HashSet Text
 selfClosing (Overrides _ _ sc) =
@@ -206,7 +171,7 @@ tagToText overrides (Name mPf name) atrs processed =
            ++ processed
            ++ ["</" <> prefix <> name <> ">"]
 
-attrsToText :: Attributes -> StateT (ProcessContext s) IO Text
+attrsToText :: Attributes -> LarcenyM s Text
 attrsToText attrs =
   T.concat <$> mapM attrToText (M.toList attrs)
   where attrToText (k,v) = do
@@ -217,7 +182,7 @@ attrsToText attrs =
         toText (k, "") = " " <> k
         toText (k, v) = " " <> k <> "=\"" <> T.strip v <> "\""
 
-fillAttrs :: Attributes -> StateT (ProcessContext s) IO Attributes
+fillAttrs :: Attributes -> LarcenyM s Attributes
 fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
   where fill p = do
           let (unboundKeys, unboundValues) = eUnboundAttrs p
@@ -225,12 +190,11 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
           vals <- T.concat <$> mapM fillAttr unboundValues
           return (keys, vals)
 
-fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
+fillAttr :: Either Text Blank -> LarcenyM s Text
 fillAttr eBlankText =
-  do (ProcessContext pth m l _ mko _ _) <- get
-     toProcessState $
-       case eBlankText of
-         Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
+  do m <- _lSubs <$> get
+     case eBlankText of
+         Right hole -> unFill (fillIn hole m) mempty (mk [])
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -239,24 +203,25 @@ fillAttr eBlankText =
 processBlank :: Text ->
                 Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processBlank tagName atr kids = do
-  (ProcessContext pth m l _ mko _ _) <- get
+  m <- _lSubs <$> get
   filled <- fillAttrs atr
-  sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
+  sequence [ unFill (fillIn (Blank tagName) m)
                     filled
-                    (pth, add m (mko kids)) l]
+                    (add m (mk kids))]
 
 processBind :: Attributes ->
                [Node] ->
-               ProcessT s
-processBind atr kids = do
-  (ProcessContext pth m l _ mko nodes _) <- get
+               [Node] ->
+               LarcenyM s [Text]
+processBind atr kids nextNodes = do
+  m <- _lSubs <$> get
   let tagName = atr M.! "tag"
-      newSubs = subs [(tagName, Fill $ \_a _t _l ->
-                                       runTemplate (mko kids) pth m l)]
-  pcSubs .= newSubs `M.union` m
-  process nodes
+      newSubs = subs [(tagName, Fill $ \_a _t ->do
+                                  runTemplate (mk kids) m)]
+  lSubs .= newSubs `M.union` m
+  process nextNodes
 
 -- Look up the template that's supposed to be applied in the library,
 -- create a substitution for the content hole using the child elements
@@ -264,15 +229,16 @@ processBind atr kids = do
 -- combined with outer substitution and the library.
 processApply :: Attributes ->
                 [Node] ->
-                ProcessT s
+                LarcenyM s [Text]
 processApply atr kids = do
-  (ProcessContext pth m l _ mko _ _) <- get
+  (LarcenyState pth m l _ _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
-  contentTpl <- toProcessState $ runTemplate (mko kids) pth m l
+  contentTpl <- runTemplate (mk kids) m
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
-  sequence [ toProcessState $ runTemplate tplToApply absolutePath (contentSub `M.union` m) l ]
+  lPath .= absolutePath
+  sequence [ runTemplate tplToApply (contentSub `M.union` m) ]
 
 findTemplateFromAttrs :: Path ->
                          Library s ->

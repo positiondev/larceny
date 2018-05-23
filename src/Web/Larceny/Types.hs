@@ -14,10 +14,21 @@ module Web.Larceny.Types ( Blank(..)
                          , defaultOverrides
                          , FromAttribute(..)
                          , AttrError(..)
-                         , ApplyError(..)) where
+                         , ApplyError(..)
+                         , LarcenyState(..)
+                         , LarcenyM
+                         , toLarcenyState
+                         , (.=)
+                         , lSubs
+                         , lPath
+                         , lLib
+                         , lOverrides
+                         , lAppState) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT)
+import           Control.Monad.State (StateT, get, runStateT, modify, MonadState)
+import Lens.Micro
+import           Control.Monad.Trans (liftIO)
 import           Data.Hashable       (Hashable, hash, hashWithSalt)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
@@ -25,6 +36,41 @@ import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Text.Read           (readMaybe)
+
+type LarcenyM s a = StateT (LarcenyState s) IO a
+
+data LarcenyState s =
+  LarcenyState { _lPath      :: [Text]
+               , _lSubs      :: Substitutions s
+               , _lLib       :: Library s
+               , _lOverrides :: Overrides
+               , _lLogger    :: (Text -> IO ())
+               , _lAppState  :: s }
+
+-- Temporary while transitioning to LarcenyM
+infix  4 .=
+(.=) :: MonadState s m => ASetter s s a b -> b -> m ()
+l .= b = modify (l .~ b)
+{-# INLINE (.=) #-}
+
+lSubs :: Lens' (LarcenyState s) (Substitutions s)
+lSubs = lens _lSubs (\l s -> l { _lSubs = s })
+lPath :: Lens' (LarcenyState s) Path
+lPath = lens _lPath (\l s -> l { _lPath = s })
+lLib :: Lens' (LarcenyState s) (Library s)
+lLib = lens _lLib (\l s -> l { _lLib = s })
+lOverrides :: Lens' (LarcenyState s) Overrides
+lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
+lAppState:: Lens' (LarcenyState s) s
+lAppState = lens _lAppState (\ls s -> ls { _lAppState = s })
+
+toLarcenyState :: StateT s IO a -> LarcenyM s a
+toLarcenyState f =
+  do l <- get
+     (result, s') <- liftIO $ runStateT f (_lAppState l)
+     lAppState .= s'
+     return result
+-- End temporary
 
 -- | Corresponds to a "blank" in the template that can be filled in
 -- with some value when the template is rendered.  Blanks can be tags
@@ -68,9 +114,8 @@ instance Hashable Blank where
 -- looking something up in a database) or store state (perhaps keeping
 -- track of what's already been rendered).
 newtype Fill s = Fill { unFill :: Attributes
-                               -> (Path, Template s)
-                               -> Library s
-                               -> StateT s IO Text }
+                               -> Template s
+                               -> LarcenyM s Text }
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
@@ -116,10 +161,8 @@ fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 -- Use `loadTemplates` to load the templates from some directory
 -- into a template library. Use the `render` functions to render
 -- templates from a Library by path.
-newtype Template s = Template { runTemplate :: Path
-                                            -> Substitutions s
-                                            -> Library s
-                                            -> StateT s IO Text }
+newtype Template s = Template { runTemplate :: Substitutions s
+                                            -> LarcenyM s Text }
 
 -- | The path to a template.
 type Path = [Text]
