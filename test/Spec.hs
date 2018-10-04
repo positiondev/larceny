@@ -9,7 +9,7 @@
 
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..))
+import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..), SomeException)
 import           Lens.Micro
 import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
                                           runStateT)
@@ -25,6 +25,7 @@ import           Data.Typeable
 import           Examples
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
+--import qualified Test.Hspec.Core.Example as HE
 import           Web.Larceny
 
 infix  4 .=
@@ -70,17 +71,19 @@ instance H.Example (LarcenyHspecM ()) where
             putMVar mv r
        takeMVar mv
 
+instance Exception H.Result
+
 withLarceny :: SpecWith LarcenyHspecState
             -> Spec
 withLarceny spec' =
   let larcenyHspecState =
-        LarcenyHspecState H.Success (LarcenyState ["default"] mempty mempty mempty) in
+        LarcenyHspecState (H.Result "" H.Success) (LarcenyState ["default"] mempty mempty mempty) in
   afterAll return $
     before (return larcenyHspecState) spec'
 
-setResult :: H.Result -> LarcenyHspecM ()
+setResult :: H.ResultStatus -> LarcenyHspecM ()
 setResult r = case r of
-                H.Success -> hResult .= r
+                H.Success -> hResult .= H.Result "" r
                 _ -> throw r
 
 tpl4Output :: Text
@@ -108,6 +111,10 @@ tpl4Output = "\
 \          </ul>                        \
 \        </body>"
 
+newtype SomeError = SomeError Text deriving (Eq, Show)
+
+instance Exception SomeError
+
 removeSpaces :: Text -> Text
 removeSpaces = T.replace " " ""
 
@@ -123,7 +130,7 @@ shouldRenderM templateText output = do
   if removeSpaces rendered == removeSpaces output
     then setResult H.Success
     else let msg = T.unpack $ rendered <> " doesn't match " <> output in
-         setResult (H.Fail Nothing msg)
+         setResult (H.Failure Nothing (H.Reason msg))
 
 shouldRenderContainingM :: Text -> Text -> LarcenyHspecM ()
 shouldRenderContainingM templateText excerpt = do
@@ -131,7 +138,7 @@ shouldRenderContainingM templateText excerpt = do
   if excerpt `T.isInfixOf` rendered
   then setResult H.Success
   else let msg = T.unpack $ excerpt <> " not found in " <> templateText in
-       setResult (H.Fail Nothing msg)
+       setResult (H.Failure Nothing (H.Reason msg))
 
 shouldErrorM :: (Exception a, Eq a) => Text -> Selector a -> LarcenyHspecM ()
 shouldErrorM templateText p =
@@ -143,13 +150,13 @@ shouldErrorM templateText p =
         r <- try forceRenderAttempt
         case r of
           Right _ ->
-               return $ H.Fail Nothing $
-                 "rendered successfully instead of throwing expected exception: " <>
-                 exceptionType
+               return $ H.Failure Nothing $
+                 H.Reason ("rendered successfully instead of throwing expected exception: " <>
+                 exceptionType)
           Left e ->
             if p e then return H.Success
-                   else return $ H.Fail Nothing $ "did not get expected exception: " <>
-                        exceptionType <> ", got this exeption instead: " <> show e
+                   else return $ H.Failure Nothing $ H.Reason ("did not get expected exception: " <>
+                        exceptionType <> ", got this exeption instead: " <> show e)
       setResult result
   where exceptionType = (show . typeOf . instanceOf) p
         instanceOf :: Selector a -> a
@@ -290,7 +297,7 @@ spec = hspec $ do
          \</apply>" `shouldRenderM` "Fill this in Fill this in"
 
       it "should not let binds escape the apply-content tag" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "not found!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> throw $ SomeError "not found!")
         let lib = M.fromList [(["blah"], parse "<apply-content /><foo />")]
         hLarcenyState.lLib .= lib
         "<apply template=\"blah\"> \
@@ -299,7 +306,7 @@ spec = hspec $ do
          \  </bind>                 \
          \  <foo />                 \
          \</apply>"
-           `shouldErrorM` (== ErrorCall "not found!")
+           `shouldErrorM` (== SomeError "not found!")
 
       it "shouldn't matter if there's no `tag` attribute" $ do
         "<bind>This won't ever be rendered!!</bind>\
@@ -610,8 +617,8 @@ fallbackTests = do
       hLarcenyState.lSubs .= fallbackSub (rawTextFill "I'm a fallback.")
       "<p>missing: <missing /></p>" `shouldRenderM` "<p>missing: I'm a fallback.</p>"
     it "should allow errors to be thrown, e.g., in dev mode" $ do
-        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> error "missing blank!")
-        "<p>missing: <missing /></p>" `shouldErrorM` (== ErrorCall "missing blank!")
+        hLarcenyState.lSubs .= fallbackSub (Fill $ \_ _ _ -> throw $ SomeError "missing blank!")
+        "<p>missing: <missing /></p>" `shouldErrorM` (== (SomeError "missing blank!"))
 
 attrTests :: SpecWith LarcenyHspecState
 attrTests =
