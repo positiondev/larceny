@@ -7,9 +7,9 @@ dependencies:
     - "~/.stack"
     - "~/larceny/.stack-work"
   pre:
-    - wget https://github.com/commercialhaskell/stack/releases/download/v1.0.4.3/stack-1.0.4.3-linux-x86_64.tar.gz -O /tmp/stack.tar.gz
+    - wget https://get.haskellstack.org/stable/linux-x86_64.tar.gz -O /tmp/stack.tar.gz
     - tar xvzf /tmp/stack.tar.gz -C /tmp
-    - sudo mv /tmp/stack-1.0.4.3-linux-x86_64/stack /usr/bin/stack
+    - sudo mv /tmp/stack-*/stack /usr/local/bin/stack
   override:
     - stack setup
     - stack build --pedantic --jobs=4

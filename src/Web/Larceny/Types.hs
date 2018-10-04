@@ -21,7 +21,6 @@ import           Control.Monad.State (StateT)
 import           Data.Hashable       (Hashable, hash, hashWithSalt)
 import           Data.Map            (Map)
 import qualified Data.Map            as M
-import           Data.Monoid         ((<>))
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Text.Read           (readMaybe)
@@ -142,10 +141,14 @@ data Overrides = Overrides { customPlainNodes :: [Text]
                            , overrideNodes    :: [Text]
                            , selfClosingNodes :: [Text]}
 
+
+instance Semigroup Overrides where
+  (Overrides p o sc) <> (Overrides p' o' sc') =
+    Overrides (p <> p') (o <> o') (sc <> sc')
+
 instance Monoid Overrides where
   mempty = Overrides [] [] []
-  mappend (Overrides p o sc) (Overrides p' o' sc') =
-    Overrides (p <> p') (o <> o') (sc <> sc')
+  mappend = (<>)
 
 -- | Default uses no overrides.
 defaultOverrides :: Overrides

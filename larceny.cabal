@@ -2,7 +2,7 @@
 -- documentation, see http://haskell.org/cabal/users-guide/
 
 name:                larceny
-version:             0.3.0.3
+version:             0.3.1
 -- synopsis:
 -- description:
 homepage:            http://www.github.com/positiondev/larceny
@@ -24,7 +24,7 @@ library
                      , Web.Larceny.Types
                      , Web.Larceny.Fills
   other-extensions:    OverloadedStrings
-  build-depends:       base >=4.8
+  build-depends:       base >=4.10
                      , containers >=0.5
                      , unordered-containers
                      , hashable
@@ -52,10 +52,10 @@ test-suite test
                      , containers >=0.5
                      , text >=1.2
                      , hspec >=2.2
+                     , hspec-core >=2.2
                      , unordered-containers
                      , directory >= 1.2.5
                      , filepath
-                     , hspec-core
                      , deepseq
                      , microlens
                      , html-conduit
@@ -78,6 +78,7 @@ benchmark bench
                      , containers >=0.5
                      , text >=1.2
                      , hspec >=2.2
+                     , hspec-core >=2.2
                      , xmlhtml
                      , larceny
                      , criterion
