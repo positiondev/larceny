@@ -9,7 +9,7 @@
 
 
 import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
-import           Control.Exception       (Exception, catch, throw, try, ErrorCall(..), SomeException)
+import           Control.Exception       (Exception, throw, try)
 import           Lens.Micro
 import           Control.Monad.State     (StateT (..), evalStateT, get, modify,
                                           runStateT)
@@ -17,7 +17,6 @@ import qualified Control.Monad.State     as S
 import           Control.Monad.Trans     (liftIO)
 import qualified Data.Map                as M
 import           Data.Maybe              (fromMaybe)
-import           Data.Monoid
 import           Data.Text               (Text)
 import qualified Data.Text               as T
 import qualified Data.Text.Lazy          as LT
@@ -25,7 +24,6 @@ import           Data.Typeable
 import           Examples
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
---import qualified Test.Hspec.Core.Example as HE
 import           Web.Larceny
 
 infix  4 .=
@@ -64,14 +62,10 @@ instance H.Example (LarcenyHspecM ()) where
   evaluateExample s _params actionWithToIO _progCallback =
     do mv <- newEmptyMVar
        actionWithToIO $ \st ->
-         do r <- catch
-                   (do ((), larcenyHspecState) <- runStateT s st
-                       return (larcenyHspecState ^. hResult))
-                   return
+         do r <- do ((), larcenyHspecState) <- runStateT s st
+                    return (larcenyHspecState ^. hResult)
             putMVar mv r
        takeMVar mv
-
-instance Exception H.Result
 
 withLarceny :: SpecWith LarcenyHspecState
             -> Spec
