@@ -171,6 +171,12 @@ spec = hspec $ do
       it "should allow self-closing tags" $ do
         "<br />" `shouldRenderM` "<br />"
 
+      it "should not remove opening tag brackets in strings" $ do
+        -- This was a bug in html-conduit: https://github.com/snoyberg/xml/issues/139
+        let customComponentScript =
+              "<script>console.log(\"<custom-component />\")console.log(\"<custom-component />\")</script>"
+        customComponentScript `shouldRenderM` customComponentScript
+
     describe "add" $ do
       it "should allow overriden tags" $ do
         hLarcenyState.lSubs .= subst
