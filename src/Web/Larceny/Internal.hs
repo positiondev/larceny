@@ -5,7 +5,8 @@ module Web.Larceny.Internal ( findTemplate
                             , parseWithOverrides) where
 
 import           Control.Exception
-import           Control.Monad.State (get)
+import           Lens.Micro          ((.~))
+import           Control.Monad.State (MonadState, modify, get)
 import           Control.Monad.Trans (liftIO)
 import qualified Data.HashSet        as HS
 import qualified Data.Map            as M
@@ -98,7 +99,7 @@ mk :: [Node] -> Template s
 mk = f
   where f nodes =
           Template $ \m ->
-                      do lSubs .= m
+                      do modify (lSubs .~ m)
                          -- lPath .= pth
                          T.concat <$> process nodes
 
@@ -220,7 +221,7 @@ processBind atr kids nextNodes = do
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t ->do
                                   runTemplate (mk kids) m)]
-  lSubs .= newSubs `M.union` m
+  modify (lSubs .~ newSubs `M.union` m)
   process nextNodes
 
 -- Look up the template that's supposed to be applied in the library,
@@ -237,7 +238,7 @@ processApply atr kids = do
   contentTpl <- runTemplate (mk kids) m
   let contentSub = subs [("apply-content",
                          rawTextFill contentTpl)]
-  lPath .= absolutePath
+  modify (lPath .~ absolutePath)
   sequence [ runTemplate tplToApply (contentSub `M.union` m) ]
 
 findTemplateFromAttrs :: Path ->

@@ -17,7 +17,8 @@ module Web.Larceny.Fills ( textFill
                          , (%)) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT)
+import           Control.Monad.State (StateT, get)
+import           Control.Monad.Trans (liftIO)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
@@ -100,8 +101,7 @@ rawTextFill t = rawTextFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_a _t -> HE.text <$> toLarcenyState t
-
+textFill' t = Fill $ \_a _t -> HE.text <$> toLarcenyState t 
 -- | Use state or IO, then fill in some text.
 --
 -- @

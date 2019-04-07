@@ -18,7 +18,6 @@ module Web.Larceny.Types ( Blank(..)
                          , LarcenyState(..)
                          , LarcenyM
                          , toLarcenyState
-                         , (.=)
                          , lSubs
                          , lPath
                          , lLib
@@ -26,8 +25,8 @@ module Web.Larceny.Types ( Blank(..)
                          , lAppState) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT, get, runStateT, modify, MonadState)
-import Lens.Micro
+import           Lens.Micro
+import           Control.Monad.State (StateT, get, put, runStateT, modify, MonadState)
 import           Control.Monad.Trans (liftIO)
 import           Data.Hashable       (Hashable, hash, hashWithSalt)
 import           Data.Map            (Map)
@@ -47,12 +46,6 @@ data LarcenyState s =
                , _lLogger    :: (Text -> IO ())
                , _lAppState  :: s }
 
--- Temporary while transitioning to LarcenyM
-infix  4 .=
-(.=) :: MonadState s m => ASetter s s a b -> b -> m ()
-l .= b = modify (l .~ b)
-{-# INLINE (.=) #-}
-
 lSubs :: Lens' (LarcenyState s) (Substitutions s)
 lSubs = lens _lSubs (\l s -> l { _lSubs = s })
 lPath :: Lens' (LarcenyState s) Path
@@ -64,13 +57,13 @@ lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
 lAppState:: Lens' (LarcenyState s) s
 lAppState = lens _lAppState (\ls s -> ls { _lAppState = s })
 
+-- TODO: This shouldn't be necessary.
 toLarcenyState :: StateT s IO a -> LarcenyM s a
-toLarcenyState f =
-  do l <- get
-     (result, s') <- liftIO $ runStateT f (_lAppState l)
-     lAppState .= s'
-     return result
--- End temporary
+toLarcenyState f = do
+  l <- get
+  (result, newAppState) <- liftIO $ runStateT f (_lAppState l)
+  put (l {_lAppState = newAppState })
+  return result
 
 -- | Corresponds to a "blank" in the template that can be filled in
 -- with some value when the template is rendered.  Blanks can be tags
@@ -97,8 +90,8 @@ instance Hashable Blank where
 -- from scratch.
 --
 -- @
--- Fill $ \attrs _tpl _lib ->
---          return $ T.pack $ show $ M.keys attrs)
+-- Fill $ \attrs _tpl ->
+--          return $ Text.intercalate " and " $ M.keys attrs)
 -- @
 --
 -- With that Fill, a Blank like this:
@@ -107,7 +100,7 @@ instance Hashable Blank where
 --
 -- would be rendered as:
 --
--- > ["attribute", "another"]
+-- > another and attribute
 --
 -- Fills (and Substitutions and Templates) have the type `StateT s IO
 -- Text` in case you need templates to depend on IO actions (like

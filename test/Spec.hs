@@ -12,7 +12,7 @@ import           Control.Concurrent.MVar (newEmptyMVar, putMVar, takeMVar)
 import           Control.Exception       (ErrorCall (..), Exception, catch,
                                           throw, try)
 import           Control.Monad.State     (StateT (..), evalStateT, get,
-                                          runStateT)
+                                          runStateT, modify, MonadState)
 import qualified Control.Monad.State     as S
 import           Control.Monad.Trans     (liftIO)
 import qualified Data.Map                as M
@@ -30,13 +30,18 @@ import qualified Test.Hspec.Core.Spec    as H
 
 import           Web.Larceny
 import           Web.Larceny.Types       (lAppState, lLib, lOverrides, lPath,
-                                          lSubs, (.=))
+                                          lSubs)
 
 type LarcenyHspecM s = StateT (LarcenyHspecState s) IO
 
 data LarcenyHspecState s =
   LarcenyHspecState { _hResult       :: H.Result
                     , _hLarcenyState :: LarcenyState s }
+
+infix  4 .=
+(.=) :: MonadState s m => ASetter s s a b -> b -> m ()
+l .= b = modify (l .~ b)
+{-# INLINE (.=) #-}
 
 hResult :: Lens' (LarcenyHspecState s) H.Result
 hResult = lens _hResult (\hs r -> hs { _hResult = r })
@@ -369,6 +374,13 @@ spec = hspec $ do
         hLarcenyState.lSubs .= subs [("template", fill)]
         "<p class=\"${template}\"></p>"
           `shouldRenderM` "<p class=\"default\"></p>"
+
+      it "should work like the docs say" $ do
+        let fill = Fill $ \attrs _tpl ->
+                     return $ T.intercalate " and " $ M.keys attrs
+        hLarcenyState.lSubs .= subs [("displayAttrs", fill)]
+        "<displayAttrs attribute1 attribute2 />"
+          `shouldRenderM` "attribute1 and attribute2"
 
     describe "a large template" $ do
       it "should render large HTML files" $ do
