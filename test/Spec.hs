@@ -25,6 +25,7 @@ import           Examples
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
 import           Web.Larceny
+import qualified Web.Larceny.Legacy       as Legacy
 
 infix  4 .=
 (.=) :: S.MonadState s m => ASetter s s a b -> b -> m ()
@@ -428,6 +429,7 @@ spec = hspec $ do
     doctypeTests
     conditionalTests
     namespaceTests
+  legacyTests
   statefulTests
 
 namespaceTests :: SpecWith LarcenyHspecState
@@ -488,6 +490,19 @@ doctypeTests = do
     it "should render doctype in the correct place" $ do
       "<!DOCTYPE html><html><p>Hello world</p></html>"
       `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
+
+legacyTests :: SpecWith ()
+legacyTests = do
+  describe "legacy functions" $ do
+    it "should have the same arguments as old Fill" $ do
+       renderWith (M.fromList [(["default"], parse "<x/><x/>")])
+                  (subs [("x", Legacy.fill $ \_ _ _ ->
+                                 do modify ((+1) :: Int -> Int)
+                                    s <- get
+                                    return (T.pack (show s)))])
+                  0
+                  ["default"]
+          `shouldReturn` Just "12"
 
 conditionalTests :: SpecWith LarcenyHspecState
 conditionalTests = do
