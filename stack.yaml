@@ -3,9 +3,4 @@ packages:
 - '.'
 extra-deps:
 - logging-3.0.5
-- git: https://github.com/emhoracek/xml.git
-  commit: 3e1bd12882d7c452d76e39e1db1b95577f38d4d7
-  subdirs:
-     - xml-conduit
-     - html-conduit
-resolver: lts-12.11
+resolver: lts-12.26
