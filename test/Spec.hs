@@ -35,7 +35,8 @@ data LarcenyState =
   LarcenyState { _lPath      :: [Text]
                , _lSubs      :: Substitutions ()
                , _lLib       :: Library ()
-               , _lOverrides :: Overrides }
+               , _lOverrides :: Overrides
+               , _lLogger    :: Logger }
 
 lPath :: Lens' LarcenyState [Text]
 lPath = lens _lPath (\ls p -> ls { _lPath = p })
@@ -45,6 +46,8 @@ lLib :: Lens' LarcenyState (Library ())
 lLib = lens _lLib (\ls l -> ls { _lLib = l })
 lOverrides :: Lens' LarcenyState Overrides
 lOverrides = lens _lOverrides (\ls o -> ls { _lOverrides = o })
+lLogger :: Lens' LarcenyState Logger
+lLogger = lens _lLogger (\ls l -> ls { _lLogger = l })
 
 type LarcenyHspecM = StateT LarcenyHspecState IO
 
@@ -71,7 +74,7 @@ withLarceny :: SpecWith LarcenyHspecState
             -> Spec
 withLarceny spec' =
   let larcenyHspecState =
-        LarcenyHspecState (H.Result "" H.Success) (LarcenyState ["default"] mempty mempty mempty) in
+        LarcenyHspecState (H.Result "" H.Success) (LarcenyState ["default"] mempty mempty mempty (Logger (\str -> return ()))) in
   afterAll return $
     before (return larcenyHspecState) spec'
 
@@ -114,8 +117,8 @@ removeSpaces = T.replace " " ""
 
 renderM :: Text -> LarcenyHspecM Text
 renderM templateText = do
-  (LarcenyHspecState _ (LarcenyState p s l o)) <- S.get
-  let tpl = parseWithOverrides o (LT.fromStrict templateText)
+  (LarcenyHspecState _ (LarcenyState p s l o lo)) <- S.get
+  let tpl = parseWithOverrides o lo (LT.fromStrict templateText)
   liftIO $ evalStateT (runTemplate tpl p s l) ()
 
 shouldRenderM :: Text -> Text -> LarcenyHspecM ()
@@ -449,7 +452,7 @@ namespaceTests =
         `shouldRenderM` "<svg:svg><path></path></svg:svg>"
 
 statefulTests :: SpecWith ()
-statefulTests =
+statefulTests = do
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
          renderWith (M.fromList [(["default"], parse "<x/><x/>")])
@@ -478,6 +481,16 @@ statefulTests =
                     0
                     ["default"]
          `shouldReturn` Just "12"
+  describe "logging" $ do
+    it "should log the missing blank" $ do
+        mv <- newEmptyMVar
+        let logger = Logger (\str -> putMVar mv str)
+        let tpl = "<p>missing: <missing>some stuff</missing></p>"
+        renderWith (M.fromList [(["default"], parseWithOverrides mempty logger tpl)])
+                    (mempty)
+                    ()
+                    ["default"]
+        takeMVar mv `shouldReturn` "Larceny: Missing fill for blank \"missing\" in template [\"default\"]"
 
 doctypeTests :: SpecWith LarcenyHspecState
 doctypeTests = do

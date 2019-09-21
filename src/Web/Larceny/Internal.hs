@@ -25,14 +25,14 @@ import           Web.Larceny.Svg     (svgNodes)
 
 -- | Turn lazy text into templates.
 parse :: LT.Text -> Template s
-parse = parseWithOverrides defaultOverrides
+parse = parseWithOverrides defaultOverrides (Logger $ putStrLn . T.unpack)
 
 -- | Use overrides when parsing a template.
-parseWithOverrides :: Overrides -> LT.Text -> Template s
-parseWithOverrides o t =
+parseWithOverrides :: Overrides -> Logger -> LT.Text -> Template s
+parseWithOverrides o logger t =
   let textWithoutDoctype = LT.replace "<!DOCTYPE html>" "<doctype />" t
       (X.Document _ (X.Element _ _ nodes) _) = D.parseLT ("<div>" <> textWithoutDoctype <> "</div>")
-  in mk o $! map (toLarcenyNode o) nodes
+  in mk o logger $! map (toLarcenyNode o) nodes
 
 -- | Phases of the template parsing/rendering process: 1. Parse the document
 --     into HTML (or really, XML) nodes 2. Turn those nodes into Larceny nodes,
@@ -93,11 +93,11 @@ toLarcenyNode _ (X.NodeComment c) = NodeComment c
 toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 
 -- | Turn HTML nodes and overrides into templates.
-mk :: Overrides -> [Node] -> Template s
-mk o = f
+mk :: Overrides -> Logger -> [Node] -> Template s
+mk o logger = f
   where f nodes =
           Template $ \pth m l ->
-                      let pc = ProcessContext pth m l o f nodes in
+                      let pc = ProcessContext pth m l o logger f nodes in
                       do s <- get
                          T.concat <$> toUserState (pc s) (process nodes)
 
@@ -113,21 +113,22 @@ toUserState pc f =
   do s <- get
      liftIO $ evalStateT f (pc { _pcState = s })
 
-fillIn :: Blank -> Substitutions s -> Fill s
-fillIn tn m = fromMaybe (fallbackFill tn m) (M.lookup tn m)
+fillIn :: Blank -> Substitutions s -> Logger -> Fill s
+fillIn tn m logger = fromMaybe (fallbackFill tn m logger) (M.lookup tn m)
 
-fallbackFill :: Blank -> Substitutions s -> Fill s
-fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
-fallbackFill (Blank tn) m =
+fallbackFill :: Blank -> Substitutions s -> Logger -> Fill s
+fallbackFill FallbackBlank m _ =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
+fallbackFill (Blank tn) m (Logger logger) =
   let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
   Fill $ \attr (pth, tpl) lib ->
-    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+    do liftIO $ logger $ T.pack ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
        unFill fallback attr (pth, tpl) lib
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
                                        , _pcLib           :: Library s
                                        , _pcOverrides     :: Overrides
+                                       , _pcLogger        :: Logger
                                        , _pcMk            :: [Node] -> Template s
                                        , _pcNodes         :: [Node]
                                        , _pcState         :: s }
@@ -227,10 +228,10 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
-  do (ProcessContext pth m l _ mko _ _) <- get
+  do (ProcessContext pth m l _ logger mko _ _) <- get
      toProcessState $
        case eBlankText of
-         Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
+         Right hole -> unFill (fillIn hole m logger) mempty (pth, mko []) l
          Left text -> return text
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
@@ -241,9 +242,9 @@ processBlank :: Text ->
                 [Node] ->
                 ProcessT s
 processBlank tagName atr kids = do
-  (ProcessContext pth m l _ mko _ _) <- get
+  (ProcessContext pth m l _ logger mko _ _) <- get
   filled <- fillAttrs atr
-  sequence [ toProcessState $ unFill (fillIn (Blank tagName) m)
+  sequence [ toProcessState $ unFill (fillIn (Blank tagName) m logger)
                     filled
                     (pth, add m (mko kids)) l]
 
@@ -251,7 +252,7 @@ processBind :: Attributes ->
                [Node] ->
                ProcessT s
 processBind atr kids = do
-  (ProcessContext pth m l _ mko nodes _) <- get
+  (ProcessContext pth m l _ _ mko nodes _) <- get
   let tagName = atr M.! "tag"
       newSubs = subs [(tagName, Fill $ \_a _t _l ->
                                        runTemplate (mko kids) pth m l)]
@@ -266,7 +267,7 @@ processApply :: Attributes ->
                 [Node] ->
                 ProcessT s
 processApply atr kids = do
-  (ProcessContext pth m l _ mko _ _) <- get
+  (ProcessContext pth m l _ _ mko _ _) <- get
   filledAttrs <- fillAttrs atr
   let (absolutePath, tplToApply) = findTemplateFromAttrs pth l filledAttrs
   contentTpl <- toProcessState $ runTemplate (mko kids) pth m l

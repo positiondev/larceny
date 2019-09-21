@@ -54,6 +54,7 @@ module Web.Larceny ( Blank(..)
                    , Path
                    , Library
                    , Overrides(..)
+                   , Logger(..)
                    , defaultOverrides
                    , render
                    , renderWith
@@ -134,13 +135,13 @@ renderRelative l sub s givenPath targetPath =
     (_, Nothing) -> return Nothing
 
 -- | Load all the templates in some directory into a Library.
-loadTemplates :: FilePath -> Overrides -> IO (Library s)
-loadTemplates path overrides =
+loadTemplates :: FilePath -> Overrides -> Logger -> IO (Library s)
+loadTemplates path overrides logger =
   do tpls <- getAllTemplates path
      M.fromList <$>
        mapM (\file -> do content <- ST.readFile (path <> "/" <> file)
                          return (mkPath file,
-                                 parseWithOverrides overrides (LT.fromStrict content)))
+                                 parseWithOverrides overrides logger (LT.fromStrict content)))
                          tpls
   where mkPath p = T.splitOn "/" $ T.pack $ dropExtension p
 

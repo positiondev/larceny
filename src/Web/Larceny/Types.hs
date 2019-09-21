@@ -14,7 +14,8 @@ module Web.Larceny.Types ( Blank(..)
                          , defaultOverrides
                          , FromAttribute(..)
                          , AttrError(..)
-                         , ApplyError(..)) where
+                         , ApplyError(..)
+                         , Logger(..)) where
 
 import           Control.Exception
 import           Control.Monad.State (StateT)
@@ -24,6 +25,8 @@ import qualified Data.Map            as M
 import           Data.Text           (Text)
 import qualified Data.Text           as T
 import           Text.Read           (readMaybe)
+
+newtype Logger = Logger { log :: Text -> IO () }
 
 -- | Corresponds to a "blank" in the template that can be filled in
 -- with some value when the template is rendered.  Blanks can be tags

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2019-09-21
+ * Remove dependency on fork of xml
+ * Allow users to pass in a logging function
+
+## Changelog bankruptcy
+
 ## 2017-9-20
  * Add `ifFill`, which allows you to make conditional fills.
  * Fix doctype bug -- HTML5 doctype is replaced after tagstream strips it out.
