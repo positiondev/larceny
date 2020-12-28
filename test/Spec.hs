@@ -25,6 +25,7 @@ import           Examples
 import           Test.Hspec
 import qualified Test.Hspec.Core.Spec    as H
 import           Web.Larceny
+import qualified Web.Larceny.Legacy       as Legacy
 
 infix  4 .=
 (.=) :: S.MonadState s m => ASetter s s a b -> b -> m ()
@@ -116,7 +117,8 @@ renderM :: Text -> LarcenyHspecM Text
 renderM templateText = do
   (LarcenyHspecState _ (LarcenyState p s l o)) <- S.get
   let tpl = parseWithOverrides o (LT.fromStrict templateText)
-  liftIO $ evalStateT (runTemplate tpl p s l) ()
+  (a, s) <- liftIO $ runTemplate tpl p s l ()
+  return a
 
 shouldRenderM :: Text -> Text -> LarcenyHspecM ()
 shouldRenderM templateText output = do
@@ -325,19 +327,19 @@ spec = hspec $ do
       it "should allow you to write functions for fills" $ do
         let subs' =
               subs [("desc",
-                     Fill $ \m _t _l -> return $ T.take (read $ T.unpack (m M.! "length"))
-                                        "A really long description"
-                                        <> "...")]
+                     Fill $ \m _t _l s -> return (T.take (read $ T.unpack (m M.! "length"))
+                                           "A really long description"
+                                            <> "...", s))]
         hLarcenyState.lSubs .= subs'
         "<l:desc length=\"10\" />" `shouldRenderM` "A really l..."
 
       it "should allow you to use IO in fills" $ do
         let subs' =
               subs [("desc", Fill $
-                          \m _t _l -> do liftIO $ putStrLn "***********\nHello World\n***********"
-                                         return $ T.take (read $ T.unpack (m M.! "length"))
-                                           "A really long description"
-                                           <> "...")]
+                          \m _t _l s -> do putStrLn "***********\nHello World\n***********"
+                                           return (T.take (read $ T.unpack (m M.! "length"))
+                                             "A really long description"
+                                             <> "...", s))]
         hLarcenyState.lSubs .= subs'
         "<l:desc length=\"10\" />" `shouldRenderM` "A really l..."
 
@@ -383,7 +385,7 @@ spec = hspec $ do
            `shouldRenderM` "<p class=\"lots of space\"></p>"
 
       it "should know what the template path is" $ do
-        let fill = Fill $ \_ (p, _) _ -> return (head p)
+        let fill = Fill $ \_ (p, _) _ s -> return (head p, s)
         hLarcenyState.lSubs .= subs [("template", fill)]
         "<p class=\"${template}\"></p>"
           `shouldRenderM` "<p class=\"default\"></p>"
@@ -427,6 +429,7 @@ spec = hspec $ do
     doctypeTests
     conditionalTests
     namespaceTests
+  legacyTests
   statefulTests
 
 namespaceTests :: SpecWith LarcenyHspecState
@@ -453,10 +456,9 @@ statefulTests =
   describe "statefulness" $ do
       it "a fill should be able to affect subsequent fills" $ do
          renderWith (M.fromList [(["default"], parse "<x/><x/>")])
-                    (subs [("x", Fill $ \_ _ _ ->
-                                   do modify ((+1) :: Int -> Int)
-                                      s <- get
-                                      return (T.pack (show s)))])
+                    (subs [("x", Fill $ \_ _ _ s ->
+                                    do let s' = s + 1
+                                       return (T.pack (show s'), s'))])
                     0
                     ["default"]
          `shouldReturn` Just "12"
@@ -471,10 +473,9 @@ statefulTests =
                  \<bind tag=\"test2\">test2</bind>\
                  \<x/><x/>"
        renderWith (M.fromList [(["default"], parse tpl)])
-                    (subs [("x", Fill $ \_ _ _ ->
-                                   do modify ((+1) :: Int -> Int)
-                                      s <- get
-                                      return (T.pack (show s)))])
+                    (subs [("x", Fill $ \_ _ _ s ->
+                                   do let s' = s + 1
+                                      return (T.pack (show s'), s'))])
                     0
                     ["default"]
          `shouldReturn` Just "12"
@@ -489,6 +490,19 @@ doctypeTests = do
     it "should render doctype in the correct place" $ do
       "<!DOCTYPE html><html><p>Hello world</p></html>"
       `shouldRenderM` "<!DOCTYPE html><html><p>Hello world</p></html>"
+
+legacyTests :: SpecWith ()
+legacyTests = do
+  describe "legacy functions" $ do
+    it "should have the same arguments as old Fill" $ do
+       renderWith (M.fromList [(["default"], parse "<x/><x/>")])
+                  (subs [("x", Legacy.fill $ \_ _ _ ->
+                                 do modify ((+1) :: Int -> Int)
+                                    s <- get
+                                    return (T.pack (show s)))])
+                  0
+                  ["default"]
+          `shouldReturn` Just "12"
 
 conditionalTests :: SpecWith LarcenyHspecState
 conditionalTests = do
@@ -641,9 +655,9 @@ attrTests =
       it "should allow you use child elements" $ do
         let descTplFill =
               useAttrs (a"length")
-                       (\n -> Fill $ \_attrs (_pth, tpl) _l -> liftIO $ do
-                           t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
-                           return $ T.take n t' <> "...")
+                       (\n -> Fill $ \_attrs (_pth, tpl) _l st -> liftIO $ do
+                           (t', st') <- runTemplate tpl ["default"] mempty mempty st
+                           return (T.take n t' <> "...", st'))
         hLarcenyState.lSubs .= subs [ ("adverb", textFill "really")
                                     , ("desc", descTplFill)]
         "<l:desc length=\"10\">A <adverb /> long description</desc>"
@@ -681,8 +695,8 @@ attrTests =
         descFunc :: Int -> Maybe Text -> Fill ()
         descFunc n e = Fill $
           do let ending = fromMaybe "..."  e
-             \_attrs (_pth, tpl) _l -> liftIO $ do
-               renderedText <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
-               return $ T.take n renderedText <> ending
+             \_attrs (_pth, tpl) _l st -> liftIO $ do
+               (renderedText, st') <- runTemplate tpl ["default"] mempty mempty st
+               return (T.take n renderedText <> ending, st')
 
 {-# ANN module ("HLint: ignore Redundant do" :: String) #-}

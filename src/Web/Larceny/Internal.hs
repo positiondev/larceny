@@ -96,22 +96,23 @@ toLarcenyNode _ (X.NodeInstruction _) = NodeContent ""
 mk :: Overrides -> [Node] -> Template s
 mk o = f
   where f nodes =
-          Template $ \pth m l ->
+          Template $ \pth m l st ->
                       let pc = ProcessContext pth m l o f nodes in
-                      do s <- get
-                         T.concat <$> toUserState (pc s) (process nodes)
+                      do (textList, st') <- toUserState (pc st) (process nodes)
+                         return (T.concat textList, st')
 
-toProcessState :: StateT s IO a -> StateT (ProcessContext s) IO a
+
+toProcessState :: (s -> IO (a, s)) -> StateT (ProcessContext s) IO a
 toProcessState f =
   do pc <- get
-     (result, s') <- liftIO $ runStateT f (_pcState pc)
+     (result, s') <- liftIO $ f (_pcState pc)
      pcState .= s'
      return result
 
-toUserState :: ProcessContext s -> StateT (ProcessContext s) IO a -> StateT s IO a
-toUserState pc f =
-  do s <- get
-     liftIO $ evalStateT f (pc { _pcState = s })
+toUserState :: ProcessContext s -> StateT (ProcessContext s) IO a -> IO (a, s)
+toUserState pc f = 
+  do (a, st) <- runStateT f pc
+     return (a, _pcState st)
 
 fillIn :: Blank -> Substitutions s -> Fill s
 fillIn tn m = fromMaybe (fallbackFill tn m) (M.lookup tn m)
@@ -120,9 +121,9 @@ fallbackFill :: Blank -> Substitutions s -> Fill s
 fallbackFill FallbackBlank m =  fromMaybe (textFill "") (M.lookup FallbackBlank m)
 fallbackFill (Blank tn) m =
   let fallback = fromMaybe (textFill "") (M.lookup FallbackBlank m) in
-  Fill $ \attr (pth, tpl) lib ->
-    do liftIO $ putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
-       unFill fallback attr (pth, tpl) lib
+  Fill $ \attr (pth, tpl) lib st ->
+    do putStrLn ("Larceny: Missing fill for blank " <> show tn <> " in template " <> show pth)
+       unFill fallback attr (pth, tpl) lib st
 
 data ProcessContext s = ProcessContext { _pcPath          :: Path
                                        , _pcSubs          :: Substitutions s
@@ -227,11 +228,11 @@ fillAttrs attrs =  M.fromList <$> mapM fill (M.toList attrs)
 
 fillAttr :: Either Text Blank -> StateT (ProcessContext s) IO Text
 fillAttr eBlankText =
-  do (ProcessContext pth m l _ mko _ _) <- get
+  do pc@(ProcessContext pth m l _ mko _ _) <- get
      toProcessState $
        case eBlankText of
          Right hole -> unFill (fillIn hole m) mempty (pth, mko []) l
-         Left text -> return text
+         Left text -> \s -> return (text, s)
 
 -- Look up the Fill for the hole.  Apply the Fill to a map of
 -- attributes, a Template made from the child nodes (adding in the

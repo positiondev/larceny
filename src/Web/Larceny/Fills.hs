@@ -17,7 +17,8 @@ module Web.Larceny.Fills ( textFill
                          , (%)) where
 
 import           Control.Exception
-import           Control.Monad.State (StateT)
+import           Control.Monad       (foldM)
+import           Control.Monad.State (StateT, runStateT)
 import qualified Data.Map            as M
 import           Data.Maybe          (fromMaybe)
 import           Data.Text           (Text)
@@ -100,7 +101,9 @@ rawTextFill t = rawTextFill' (return t)
 -- textFill' getTextFromDatabase
 -- @
 textFill' :: StateT s IO Text -> Fill s
-textFill' t = Fill $ \_m _t _l -> HE.text <$> t
+textFill' t = Fill $ \_m _t _l st -> do
+   (t, st') <- runStateT t st
+   return (HE.text t, st')
 
 -- | Use state or IO, then fill in some text.
 --
@@ -109,7 +112,7 @@ textFill' t = Fill $ \_m _t _l -> HE.text <$> t
 -- textFill' getTextFromDatabase
 -- @
 rawTextFill' :: StateT s IO Text -> Fill s
-rawTextFill' t = Fill $ \_m _t _l -> t
+rawTextFill' t = Fill $ \_m _t _l -> runStateT t
 
 -- | Create substitutions for each element in a list and fill the child nodes
 -- with those substitutions.
@@ -124,17 +127,26 @@ rawTextFill' t = Fill $ \_m _t _l -> t
 mapSubs :: (a -> Substitutions s)
         -> [a]
         -> Fill s
-mapSubs f xs = Fill $ \_attrs (pth, tpl) lib ->
-    T.concat <$>  mapM (\n -> runTemplate tpl pth (f n) lib) xs
+mapSubs f xs = Fill $ \_attrs (pth, tpl) lib st ->
+  foldM
+    (\(text, st) item -> do
+      (t , st') <- runTemplate tpl pth (f item) lib st
+      return (text <> t, st'))
+    ("", st)
+    xs
 
 -- | Create substitutions for each element in a list (using IO/state if
 -- needed) and fill the child nodes with those substitutions.
 mapSubs' :: (a -> StateT s IO (Substitutions s)) -> [a] -> Fill s
 mapSubs' f xs = Fill $
-  \_m (pth, tpl) lib ->
-    T.concat <$>  mapM (\x -> do
-                           s' <- f x
-                           runTemplate tpl pth s' lib) xs
+  \_m (pth, tpl) lib st ->
+    foldM
+      (\(text, st) item -> do
+        (s', st' ) <- runStateT (f item) st
+        (t , st'') <- runTemplate tpl pth s' lib st'
+        return (text <> t, st''))
+      ("", st)
+      xs
 
 -- | Fill in the child nodes of the blank with substitutions already
 -- available.
@@ -198,11 +210,11 @@ maybeFillChildrenWith (Just s) = Fill $ \_s (pth, Template tpl) l ->
 --
 -- > Bonnie Thunders
 maybeFillChildrenWith' :: StateT s IO (Maybe (Substitutions s)) -> Fill s
-maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l -> do
-  mSubs <- sMSubs
+maybeFillChildrenWith' sMSubs = Fill $ \_s (pth, Template tpl) l st -> do
+  (mSubs, newState) <- runStateT sMSubs st
   case mSubs of
-    Nothing -> return ""
-    Just s  -> tpl pth s l
+    Nothing -> return ("", newState)
+    Just s  -> tpl pth s l newState
 
 -- | Use attributes from the the blank as arguments to the fill.
 --

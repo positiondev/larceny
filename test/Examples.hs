@@ -64,10 +64,10 @@ subst = subs [ ("site-title", textFill "Gotham Girls roster")
 
 modifyInnerText :: (Text -> Text) -> Fill ()
 modifyInnerText f = Fill $
-  \_attrs (_pth, tpl) _l ->
+  \_attrs (_pth, tpl) _l st ->
     liftIO $ do
-      t' <- evalStateT (runTemplate tpl ["default"] mempty mempty) ()
-      return $ f t'
+      (t', st') <- runTemplate tpl ["default"] mempty mempty st
+      return $ (f t', st')
 
 tplLib :: Library ()
 tplLib = M.fromList [(["skater"], parse "Beyonslay")]

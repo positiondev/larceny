@@ -43,6 +43,9 @@ instance Hashable Blank where
   hashWithSalt s (Blank tn) = s + hash tn
   hashWithSalt s FallbackBlank = s + hash ("FallbackBlank" :: Text)
 
+-- A transitional type
+type StateTsIOText s = IO (Text, s)
+
 -- | A  Fill is how to fill in a Blank.
 --
 -- In most cases, you can use helper functions like `textFill` or
@@ -69,7 +72,8 @@ instance Hashable Blank where
 newtype Fill s = Fill { unFill :: Attributes
                                -> (Path, Template s)
                                -> Library s
-                               -> StateT s IO Text }
+                               -> s
+                               -> StateTsIOText s }
 
 -- | The Blank's attributes, a map from the attribute name to
 -- it's value.
@@ -118,7 +122,8 @@ fallbackSub fill = M.fromList [(FallbackBlank, fill)]
 newtype Template s = Template { runTemplate :: Path
                                             -> Substitutions s
                                             -> Library s
-                                            -> StateT s IO Text }
+                                            -> s
+                                            -> StateTsIOText s }
 
 -- | The path to a template.
 type Path = [Text]
